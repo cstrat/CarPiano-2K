@@ -36,8 +36,8 @@ import java.util.List;
  */
 public class HomeActivity extends Activity {
 
-    private static final String[] PAGES = {"Sounds", "Live mic", "Whoopee", "Setup"};
-    private static final int P_SOUNDS = 0, P_MIC = 1, P_WHOOPEE = 2, P_SETUP = 3;
+    private static final String[] PAGES = {"Sounds", "Live mic", "Whoopee", "Widget", "Setup"};
+    private static final int P_SOUNDS = 0, P_MIC = 1, P_WHOOPEE = 2, P_WIDGET = 3, P_SETUP = 4;
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static final int REQ_MIC = 77;
@@ -271,6 +271,8 @@ public class HomeActivity extends Activity {
             v = buildLiveMic();
         } else if (idx == P_WHOOPEE) {
             v = buildWhoopee();
+        } else if (idx == P_WIDGET) {
+            v = buildWidget();
         } else {
             v = buildSetup();
         }
@@ -1113,6 +1115,97 @@ public class HomeActivity extends Activity {
         }
     }
 
+    // ----------------------------------------------------------------- widget
+
+    /** Restarts the floating widget so a changed setting takes effect, then redraws this page. */
+    private void applyWidget(String message) {
+        if (FloatService.running) {
+            stopService(new Intent(this, FloatService.class));
+            h.postDelayed(this::startFloat, 500);
+        }
+        setStatus(message);
+        showPage(P_WIDGET);
+    }
+
+    private View widgetRow(String name, String detail, String buttonLabel, boolean on, Runnable action) {
+        LinearLayout r = Ui.row(this);
+        LinearLayout texts = Ui.col(this);
+        texts.addView(Ui.text(this, name, 18f, Ui.TXT, true));
+        texts.addView(Ui.text(this, detail, 14f, Ui.DIM, false));
+        r.addView(texts, Ui.lp(0, WRAP, 1f));
+        r.addView(Ui.button(this, buttonLabel, on ? Ui.OK : Ui.RAISE, on ? Ui.BG : Ui.TXT, action),
+                Ui.lp(this, Ui.dp(this, 150), WRAP, 0, 4));
+        r.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        return r;
+    }
+
+    private View buildWidget() {
+        ScrollView sv = new ScrollView(this);
+        LinearLayout pg = Ui.col(this);
+        int p = Ui.dp(this, 14);
+        pg.setPadding(p, p, p, p);
+        LinearLayout c = Ui.card(this);
+
+        final boolean shown = FloatService.running;
+        c.addView(widgetRow("Floating widget", "A small soundboard that stays on top of other apps. It comes "
+                + "back each time CarTalk is opened while this is on.", shown ? "On" : "Off", shown, () -> {
+                    toggleFloat();
+                    h.postDelayed(() -> {
+                        if (HomeActivity.this.page == P_WIDGET) {
+                            showPage(P_WIDGET);
+                        }
+                    }, 900);
+                }));
+
+        final boolean ptt = sp.getBoolean("float_ptt", false);
+        c.addView(widgetRow("Push to talk", "Adds a Hold to talk bar that sends the cabin microphone to the "
+                + "outside speaker.", ptt ? "On" : "Off", ptt, () -> {
+                    sp.edit().putBoolean("float_ptt", !ptt).apply();
+                    if (!ptt && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+                    }
+                    applyWidget(ptt ? "Push to talk removed from the widget." : "Push to talk added to the widget.");
+                }));
+
+        final boolean whoopee = sp.getBoolean("float_whoopee", false);
+        c.addView(widgetRow("Whoopee sounds", "Shows the Whoopee group and a seat picker in the widget. "
+                + "These always play inside the cabin.", whoopee ? "On" : "Off", whoopee, () -> {
+                    sp.edit().putBoolean("float_whoopee", !whoopee).apply();
+                    applyWidget(whoopee ? "Whoopee removed from the widget." : "Whoopee added to the widget.");
+                }));
+
+        final float scale = Math.max(0.8f, Math.min(2.2f, sp.getFloat("float_scale", 1.25f)));
+        LinearLayout size = Ui.row(this);
+        LinearLayout st = Ui.col(this);
+        st.addView(Ui.text(this, "Size: " + Math.round(scale * 100) + "%", 18f, Ui.TXT, true));
+        st.addView(Ui.text(this, "You can also pinch the widget with two fingers.", 14f, Ui.DIM, false));
+        size.addView(st, Ui.lp(0, WRAP, 1f));
+        size.addView(Ui.button(this, "Smaller", Ui.RAISE, Ui.TXT, () -> {
+            sp.edit().putFloat("float_scale", Math.max(0.8f, scale - 0.15f)).apply();
+            applyWidget("Widget made smaller.");
+        }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        size.addView(Ui.button(this, "Bigger", Ui.RAISE, Ui.TXT, () -> {
+            sp.edit().putFloat("float_scale", Math.min(2.2f, scale + 0.15f)).apply();
+            applyWidget("Widget made bigger.");
+        }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        size.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        c.addView(size);
+
+        c.addView(widgetRow("Position", "Lost it off screen? This puts it back near the top left.",
+                "Reset", false, () -> {
+                    sp.edit().putInt("float_x", Ui.dp(this, 40)).putInt("float_y", Ui.dp(this, 160))
+                            .putBoolean("float_docked", false).apply();
+                    applyWidget("Widget position reset.");
+                }));
+
+        c.addView(Ui.text(this, "Favourites: long-press a sound in the widget's full view, or on the Sounds "
+                + "page, to add it to the widget's middle view.", 14f, Ui.DIM, false));
+        pg.addView(c, Ui.lp(this, MATCH, WRAP, 0, 6));
+        sv.addView(pg);
+        return sv;
+    }
+
     // ------------------------------------------------------------------ setup
 
     private View buildSetup() {
@@ -1156,37 +1249,6 @@ public class HomeActivity extends Activity {
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         scan.addView(sb);
         page.addView(scan, Ui.lp(this, MATCH, WRAP, 0, 6));
-
-        LinearLayout fw = Ui.card(this);
-        fw.addView(Ui.text(this, "Floating widget", 20f, Ui.TXT, true));
-        fw.addView(Ui.text(this, "Stays on top of other apps. Resize it with a two-finger pinch on the panel, "
-                + "or the Smaller and Bigger buttons in its full view.", 15f, Ui.DIM, false));
-        LinearLayout fb = Ui.row(this);
-        fb.addView(Ui.button(this, FloatService.running ? "Hide widget" : "Show widget", Ui.RAISE, Ui.TXT, () -> {
-            toggleFloat();
-            h.postDelayed(() -> {
-                if (HomeActivity.this.page == P_SETUP) {
-                    showPage(P_SETUP);
-                }
-            }, 900);
-        }), Ui.lp(this, WRAP, WRAP, 0, 4));
-        final boolean ptt = sp.getBoolean("float_ptt", false);
-        fb.addView(Ui.button(this, ptt ? "Push to talk in widget: on" : "Push to talk in widget: off",
-                ptt ? Ui.OUT : Ui.RAISE, ptt ? Ui.BG : Ui.TXT, () -> {
-                    sp.edit().putBoolean("float_ptt", !ptt).apply();
-                    if (!ptt && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                            != PackageManager.PERMISSION_GRANTED) {
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
-                    }
-                    if (FloatService.running) {
-                        stopService(new Intent(this, FloatService.class));
-                        h.postDelayed(this::startFloat, 500);
-                    }
-                    setStatus(ptt ? "Push to talk removed from the widget." : "Push to talk added to the widget.");
-                    showPage(P_SETUP);
-                }), Ui.lp(this, WRAP, WRAP, 0, 4));
-        fw.addView(fb);
-        page.addView(fw, Ui.lp(this, MATCH, WRAP, 0, 6));
 
         LinearLayout test = Ui.card(this);
         test.addView(Ui.text(this, "Speaker test", 20f, Ui.TXT, true));

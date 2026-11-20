@@ -51,6 +51,8 @@ public class FloatService extends Service {
     private int mode = MINI;
     private boolean docked;
     private float scale = 1.25f;
+    private int seat;
+    private static final String[] SEAT_NAMES = {"Cabin", "Driver", "Front pass.", "Rear L", "Rear R"};
     private final LiveMic mic = new LiveMic();
     private boolean dockLeft;
     private String group;
@@ -291,6 +293,8 @@ public class FloatService extends Service {
         head.addView(icon, Ui.lp(d(44), d(44), 0));
         TextView handle = tx(titleText, 16f, Ui.TXT, true);
         handle.setPadding(d(8), d(10), d(4), d(10));
+        handle.setSingleLine(true);
+        handle.setEllipsize(android.text.TextUtils.TruncateAt.END);
         handle.setOnTouchListener(new Drag(onTitleTap));
         head.addView(handle, Ui.lp(0, WRAP, 1f));
         final boolean outside = Prefs.outer(this);
@@ -340,17 +344,24 @@ public class FloatService extends Service {
         p.setBackground(Ui.box(this, Ui.SURF, Ui.LINE, 20));
         int pad = d(10);
         p.setPadding(pad, pad, pad, pad);
-        p.setLayoutParams(new LinearLayout.LayoutParams(d(400), WRAP));
-        LinearLayout head = header("Favourites", () -> setMode(FULL));
+        p.setLayoutParams(new LinearLayout.LayoutParams(d(450), WRAP));
+        LinearLayout head = header("Favs", () -> setMode(FULL));
         head.addView(small("All", Ui.RAISE, Ui.TXT, () -> setMode(FULL)), Ui.lp(this, WRAP, WRAP, 0, 3));
         head.addView(small("Hide", Ui.RAISE, Ui.TXT, () -> setMode(MINI)), Ui.lp(this, WRAP, WRAP, 0, 3));
         p.addView(head, Ui.lp(MATCH, WRAP, 0));
         addTalk(p);
         List<TextView> tiles = new ArrayList<>();
+        boolean whoopee = sp.getBoolean("float_whoopee", false);
+        boolean anyWhoopee = false;
         for (File f : Library.userSounds(this)) {
-            if (Library.isFav(this, f) && !"Whoopee".equals(Library.groupOf(this, f))) {
+            boolean w = "Whoopee".equals(Library.groupOf(this, f));
+            if (Library.isFav(this, f) && (!w || whoopee)) {
                 tiles.add(soundTile(f, false));
+                anyWhoopee |= w;
             }
+        }
+        if (anyWhoopee) {
+            p.addView(seatRow(), Ui.lp(MATCH, WRAP, 0));
         }
         if (tiles.isEmpty()) {
             TextView none = tx("No favourites yet. Tap All, then long-press a sound to make it a "
@@ -407,7 +418,7 @@ public class FloatService extends Service {
         final List<String> groups = new ArrayList<>();
         final List<File> all = Library.userSounds(this);
         for (String g : Library.allGroups(this)) {
-            if ("Whoopee".equals(g)) {
+            if ("Whoopee".equals(g) && !sp.getBoolean("float_whoopee", false)) {
                 continue;
             }
             for (File f : all) {
@@ -439,6 +450,9 @@ public class FloatService extends Service {
         hs.addView(chips);
         p.addView(hs, Ui.lp(MATCH, WRAP, 0));
 
+        if ("Whoopee".equals(group)) {
+            p.addView(seatRow(), Ui.lp(MATCH, WRAP, 0));
+        }
         List<TextView> tiles = new ArrayList<>();
         for (final File s : all) {
             if (!group.equals(Library.groupOf(this, s))) {
@@ -461,15 +475,51 @@ public class FloatService extends Service {
         return p;
     }
 
+    /** Seat picker for Whoopee sounds, which always play inside the cabin. */
+    private View seatRow() {
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = Ui.row(this);
+        TextView lab = tx("Seat", 13f, Ui.DIM, true);
+        row.addView(lab, Ui.lp(this, WRAP, WRAP, 0, 5));
+        for (int i = 0; i < SEAT_NAMES.length; i++) {
+            final int idx = i;
+            boolean on = seat == idx;
+            row.addView(small(SEAT_NAMES[i], on ? Ui.CAB : Ui.BG, on ? Ui.BG : Ui.DIM, () -> {
+                seat = idx;
+                render();
+            }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        }
+        hs.addView(row);
+        return hs;
+    }
+
     private TextView small(String label, int fill, int textColor, Runnable onClick) {
         TextView b = Ui.button(this, label, fill, textColor, onClick);
         b.setTextSize(14f * scale);
+        b.setSingleLine(true);
         b.setMinHeight(d(44));
         b.setPadding(d(14), d(6), d(14), d(6));
         return b;
     }
 
     private void play(File f) {
+        if ("Whoopee".equals(Library.groupOf(this, f))) {
+            AudioDeviceInfo cabin = audio.mediaBus();
+            if (cabin == null) {
+                cabin = audio.inner();
+            }
+            Player.Cb none = (ok, msg) -> {
+            };
+            if (seat == 0) {
+                Player.play(this, null, f, cabin, AudioAttributes.USAGE_MEDIA, true, 0f, none);
+            } else {
+                int channel = seat == 1 ? Player.FRONT_RIGHT : seat == 2 ? Player.FRONT_LEFT
+                        : seat == 3 ? Player.BACK_LEFT : Player.BACK_RIGHT;
+                Player.playAtSeat(this, null, f, cabin, AudioAttributes.USAGE_MEDIA, channel, none);
+            }
+            return;
+        }
         boolean outside = Prefs.outer(this);
         AudioDeviceInfo dev;
         if (outside) {
