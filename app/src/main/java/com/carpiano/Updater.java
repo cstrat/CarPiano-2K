@@ -109,7 +109,19 @@ final class Updater {
         }, "update-check").start();
     }
 
-    static void download(final Context ctx, final String apkUrl, final Progress p) {
+    /** Build number inside a downloaded APK, or -1 if it cannot be read. */
+    @SuppressWarnings("deprecation")
+    static int apkBuild(Context c, File apk) {
+        try {
+            android.content.pm.PackageInfo pi =
+                    c.getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
+            return pi == null ? -1 : pi.versionCode - 1000;
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    static void download(final Context ctx, final String apkUrl, final int build, final Progress p) {
         new Thread(() -> {
             HttpURLConnection con = null;
             try {
@@ -117,11 +129,21 @@ final class Updater {
                 if (!dir.isDirectory() && !dir.mkdirs()) {
                     throw new IllegalStateException("cannot create download folder");
                 }
-                File out = new File(dir, "update.apk");
+                // A fresh file name per build: the installer was showing a stale copy when
+                // every download reused the same name. Older downloads are cleared first.
+                File[] old = dir.listFiles();
+                if (old != null) {
+                    for (File f : old) {
+                        f.delete();
+                    }
+                }
+                File out = new File(dir, "CarTalk-build-" + build + ".apk");
                 con = (HttpURLConnection) new URL(apkUrl).openConnection();
                 con.setConnectTimeout(10000);
                 con.setReadTimeout(30000);
                 con.setInstanceFollowRedirects(true);
+                con.setUseCaches(false);
+                con.setRequestProperty("Cache-Control", "no-cache");
                 con.setRequestProperty("User-Agent", "CarPiano-2K");
                 int code = con.getResponseCode();
                 if (code != 200) {

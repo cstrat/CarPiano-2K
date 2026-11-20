@@ -1253,7 +1253,8 @@ public class HomeActivity extends Activity {
         }
         final String url = latestUrl;
         setUpdateMsg("Downloading build " + latestBuild + "...");
-        Updater.download(this, url, new Updater.Progress() {
+        final int wanted = latestBuild;
+        Updater.download(this, url, wanted, new Updater.Progress() {
             @Override
             public void at(final int percent) {
                 runOnUiThread(() -> setUpdateMsg("Downloading build " + latestBuild + ": " + percent + "%"));
@@ -1264,6 +1265,12 @@ public class HomeActivity extends Activity {
                 runOnUiThread(() -> {
                     if (error != null || apk == null) {
                         setUpdateMsg("Download failed (" + error + "). Try Open download in browser.");
+                        return;
+                    }
+                    int got = Updater.apkBuild(HomeActivity.this, apk);
+                    if (got != wanted) {
+                        setUpdateMsg("The download did not contain build " + wanted + " (it reads as build "
+                                + got + ", " + (apk.length() / 1024) + " KB). Try Open download in browser.");
                         return;
                     }
                     boolean allowed = true;
@@ -1293,7 +1300,8 @@ public class HomeActivity extends Activity {
                         return;
                     }
                     if (Updater.install(HomeActivity.this, apk)) {
-                        setUpdateMsg("Installer opened. If nothing appeared, tap Open download in browser.");
+                        setUpdateMsg("Downloaded and checked build " + wanted + ". Installer opened; if it shows an "
+                                + "older version or nothing appears, tap Open download in browser.");
                     } else if (Updater.openInBrowser(HomeActivity.this, url)) {
                         setUpdateMsg("The installer could not be opened from the app, so the download was "
                                 + "opened in the browser instead.");
