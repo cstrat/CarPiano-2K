@@ -27,9 +27,9 @@ Every push to `main` builds an APK and publishes it under [Releases](../../relea
 - Choosing which cabin microphone feeds the live mic, and which seat a Whoopee sound comes from.
 - Sentry mode and ambient lighting toggles, and simple "when this happens, do that" automations.
 
-## Bundled sounds
+## Sounds
 
-Only a few synthesised courtesy tones and the Whoopee set ship in the APK, all made from scratch for this project. Clips from TV shows, films or sport broadcasts are not bundled. Add your own files with **Add sounds**, which can file a whole batch from Downloads or USB under a preset group (My sounds, F1, Memes, TV and film, Useful, Whoopee) or one you create.
+No sounds ship in the APK. Add your own with **Add sounds**: single files or a zip from Downloads or USB. Folders inside a zip become groups, and a folder named Whoopee feeds the Whoopee page.
 
 ## How it works
 

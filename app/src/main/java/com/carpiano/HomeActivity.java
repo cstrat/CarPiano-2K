@@ -44,32 +44,8 @@ public class HomeActivity extends Activity {
     private static final int REQ_FILES = 78;
     private static final long LATCH_LIMIT_MS = 30000L;
 
-    /** label, category, file under assets/sounds. */
-    private static final String[][] BUILT_IN = {
-            {"Friendly chime", "Courtesy", "friendly-chime.wav"},
-            {"Soft beep", "Courtesy", "soft-beep.wav"},
-            {"Double beep", "Courtesy", "double-beep.wav"},
-            {"Attention tone", "Courtesy", "attention-three-tone.wav"},
-            {"Bike bell", "Courtesy", "bike-bell.wav"},
-            {"Doorbell", "Courtesy", "doorbell.wav"},
-            {"Referee whistle", "Courtesy", "referee-whistle.wav"},
-            {"Welcome chime", "Greetings", "welcome-chime.wav"},
-            {"Goodbye chime", "Greetings", "goodbye-chime.wav"},
-    };
-    /** label, file under assets/farts. */
-    private static final String[][] FARTS = {
-            {"Quick toot", "quick-toot.wav"},
-            {"Tiny pip", "tiny-pip.wav"},
-            {"Squeaker", "squeaker.wav"},
-            {"Rising question", "rising-question.wav"},
-            {"Sputter", "sputter.wav"},
-            {"Two-parter", "two-parter.wav"},
-            {"Trouser trumpet", "trouser-trumpet.wav"},
-            {"Long rumble", "long-rumble.wav"},
-    };
     /** Preset groups the user can file imported sounds under. They can add their own too. */
     private static final String[] USER_GROUPS = {"My sounds", "F1", "Memes", "TV and film", "Useful", "Whoopee"};
-    private static final String[] BUILT_IN_CATEGORIES = {"Courtesy", "Greetings"};
 
     private static final class Sound {
         final String label;
@@ -311,9 +287,6 @@ public class HomeActivity extends Activity {
 
     private List<Sound> allSounds() {
         List<Sound> out = new ArrayList<>();
-        for (String[] b : BUILT_IN) {
-            out.add(new Sound(b[0], b[1], b[2], null));
-        }
         try {
             SharedPreferences groups = getSharedPreferences("groups", MODE_PRIVATE);
             for (File f : Library.userSounds(this)) {
@@ -335,9 +308,6 @@ public class HomeActivity extends Activity {
         LinearLayout chips = Ui.row(this);
         List<String> cats = new ArrayList<>();
         cats.add("All");
-        for (String c : BUILT_IN_CATEGORIES) {
-            cats.add(c);
-        }
         List<Sound> everything = allSounds();
         for (String g : userGroups()) {
             boolean used = "My sounds".equals(g);
@@ -379,10 +349,9 @@ public class HomeActivity extends Activity {
             }
         }
         if (shown.isEmpty()) {
-            TextView none = Ui.text(this, "My sounds".equals(category)
-                    ? "Nothing here yet. Tap Add sounds to bring in MP3 or WAV files. Long-press a "
-                    + "sound afterwards to move it to another group."
-                    : "Nothing in this category yet.", 16f, Ui.DIM, false);
+            TextView none = Ui.text(this, "Nothing here yet. Tap Add sounds to bring in your own MP3 or "
+                    + "WAV files, or a zip of them. Long-press a sound afterwards to move it to another group.",
+                    16f, Ui.DIM, false);
             none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
             grid.addView(none);
         }
@@ -472,7 +441,7 @@ public class HomeActivity extends Activity {
         stopMic();
         final int token = ++playSeq;
         setStatus("Playing " + s.label + (outside ? " through the outside speaker." : " in the cabin."));
-        Player.play(this, s.asset != null ? "sounds/" + s.asset : null, s.file, dev, usage,
+        Player.play(this, s.asset, s.file, dev, usage,
                 (ok, msg) -> runOnUiThread(() -> {
                     if (token != playSeq) {
                         return;
@@ -527,11 +496,6 @@ public class HomeActivity extends Activity {
     private boolean groupNameTaken(String name) {
         if ("All".equalsIgnoreCase(name)) {
             return true;
-        }
-        for (String g : BUILT_IN_CATEGORIES) {
-            if (g.equalsIgnoreCase(name)) {
-                return true;
-            }
         }
         for (String g : userGroups()) {
             if (g.equalsIgnoreCase(name)) {
@@ -936,7 +900,8 @@ public class HomeActivity extends Activity {
 
     // ---------------------------------------------------------------- whoopee
 
-    private int fartSide;
+    private static final String[] SEATS = {"Everywhere", "Driver", "Front passenger", "Rear left", "Rear right"};
+    private int fartSeat;
     private int fartDelaySec;
     private final java.util.Random random = new java.util.Random();
 
@@ -945,88 +910,122 @@ public class HomeActivity extends Activity {
         int p = Ui.dp(this, 20);
         page.setPadding(p, Ui.dp(this, 14), p, 0);
 
-        LinearLayout top = Ui.row(this);
-        top.addView(Ui.text(this, "From", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
-        final String[] sides = {"Left side", "Both sides", "Right side"};
-        for (int i = 0; i < sides.length; i++) {
-            final int side = i - 1;
-            boolean on = fartSide == side;
-            top.addView(Ui.button(this, sides[i], on ? Ui.CAB : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
-                fartSide = side;
+        LinearLayout seatRow = Ui.row(this);
+        seatRow.addView(Ui.text(this, "Seat", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 56), WRAP, 0, 6));
+        for (int i = 0; i < SEATS.length; i++) {
+            final int seat = i;
+            boolean on = fartSeat == seat;
+            seatRow.addView(Ui.button(this, SEATS[i], on ? Ui.CAB : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
+                fartSeat = seat;
                 showPage(P_WHOOPEE);
             }), Ui.lp(this, WRAP, WRAP, 0, 4));
         }
-        View gap = new View(this);
-        top.addView(gap, Ui.lp(0, 1, 1f));
-        top.addView(Ui.text(this, "Delay", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
+        page.addView(seatRow, Ui.lp(MATCH, WRAP, 0));
+
+        LinearLayout delayRow = Ui.row(this);
+        delayRow.addView(Ui.text(this, "Delay", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 56), WRAP, 0, 6));
         final int[] delays = {0, 5, 10, 30};
         for (final int dsec : delays) {
             boolean on = fartDelaySec == dsec;
-            top.addView(Ui.button(this, dsec == 0 ? "None" : dsec + " s", on ? Ui.TXT : Ui.SURF,
+            delayRow.addView(Ui.button(this, dsec == 0 ? "None" : dsec + " s", on ? Ui.TXT : Ui.SURF,
                     on ? Ui.BG : Ui.DIM, () -> {
                         fartDelaySec = dsec;
                         showPage(P_WHOOPEE);
                     }), Ui.lp(this, WRAP, WRAP, 0, 4));
         }
-        page.addView(top, Ui.lp(MATCH, WRAP, 0));
+        page.addView(delayRow, Ui.lp(MATCH, WRAP, 0));
 
         ScrollView sv = new ScrollView(this);
         LinearLayout grid = Ui.col(this);
-        final int perRow = 3;
-        LinearLayout rowView = null;
         final List<Sound> farts = new ArrayList<>();
-        for (String[] f : FARTS) {
-            farts.add(new Sound(f[0], "Whoopee", "farts/" + f[1], null));
-        }
         for (Sound u : allSounds()) {
-            if (u.file != null && "Whoopee".equals(u.category)) {
+            if ("Whoopee".equals(u.category)) {
                 farts.add(u);
             }
         }
-        for (int i = 0; i <= farts.size(); i++) {
-            if (i % perRow == 0) {
-                rowView = new LinearLayout(this);
-                rowView.setOrientation(LinearLayout.HORIZONTAL);
-                grid.addView(rowView, Ui.lp(MATCH, WRAP, 0));
+        if (farts.isEmpty()) {
+            TextView none = Ui.text(this, "No Whoopee sounds yet. On the Sounds page tap Add sounds and file "
+                    + "them under Whoopee, or put them in a Whoopee folder inside your zip.", 16f, Ui.DIM, false);
+            none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
+            grid.addView(none);
+        } else {
+            final int perRow = 3;
+            LinearLayout rowView = null;
+            for (int i = 0; i <= farts.size(); i++) {
+                if (i % perRow == 0) {
+                    rowView = new LinearLayout(this);
+                    rowView.setOrientation(LinearLayout.HORIZONTAL);
+                    grid.addView(rowView, Ui.lp(MATCH, WRAP, 0));
+                }
+                final int idx = i - 1;
+                TextView b = Ui.text(this, idx < 0 ? "Surprise me" : farts.get(idx).label, 19f,
+                        idx < 0 ? Ui.BG : Ui.TXT, true);
+                b.setGravity(Gravity.CENTER);
+                b.setBackground(Ui.box(this, idx < 0 ? Ui.OUT : Ui.SURF, idx < 0 ? 0 : Ui.LINE, 18));
+                b.setClickable(true);
+                b.setFocusable(true);
+                b.setOnClickListener(v -> queueFart(farts.get(idx < 0 ? random.nextInt(farts.size()) : idx)));
+                rowView.addView(b, Ui.lp(this, 0, Ui.dp(this, 104), 1f, 6));
             }
-            final int idx = i - 1;
-            TextView b = Ui.text(this, idx < 0 ? "Surprise me" : farts.get(idx).label, 19f,
-                    idx < 0 ? Ui.BG : Ui.TXT, true);
-            b.setGravity(Gravity.CENTER);
-            b.setBackground(Ui.box(this, idx < 0 ? Ui.OUT : Ui.SURF, idx < 0 ? 0 : Ui.LINE, 18));
-            b.setClickable(true);
-            b.setFocusable(true);
-            b.setOnClickListener(v -> queueFart(farts.get(idx < 0 ? random.nextInt(farts.size()) : idx)));
-            rowView.addView(b, Ui.lp(this, 0, Ui.dp(this, 104), 1f, 6));
+            for (int i = (farts.size() + 1) % perRow; i != 0 && i < perRow; i++) {
+                rowView.addView(new View(this), Ui.lp(this, 0, Ui.dp(this, 104), 1f, 6));
+            }
         }
         sv.addView(grid);
         page.addView(sv, Ui.lp(MATCH, 0, 1f));
-        TextView note = Ui.text(this, "Always plays inside the cabin, whatever the Cabin / Outside switch says. "
-                + "Left and right use the car's stereo speakers. Sounds you file under Whoopee appear here too.", 13f, Ui.DIM, false);
+        TextView note = Ui.text(this, "Always plays inside the cabin. Seat placement is a first guess at which "
+                + "speaker channel serves which seat. If a seat is wrong or silent, use Speaker test in Setup "
+                + "and report what you hear.", 13f, Ui.DIM, false);
         note.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), 0);
         page.addView(note, Ui.lp(MATCH, WRAP, 0));
         return page;
     }
 
     private void queueFart(final Sound s) {
-        final int side = fartSide;
+        final int seat = fartSeat;
         if (fartDelaySec <= 0) {
-            playFart(s, side);
+            playFart(s, seat);
             return;
         }
         setStatus("Armed. Going off in " + fartDelaySec + " seconds.");
-        h.postDelayed(() -> playFart(s, side), fartDelaySec * 1000L);
+        h.postDelayed(() -> playFart(s, seat), fartDelaySec * 1000L);
     }
 
-    private void playFart(final Sound s, int side) {
-        AudioDeviceInfo dev = audio.mediaBus();
-        if (dev == null) {
-            dev = audio.inner();
+    /**
+     * Seat to speaker channel, as a first guess from the bus names on a right-hand-drive 7X:
+     * the media bus panned right for the driver, the front passenger bus, and the rear seat
+     * bus panned left or right.
+     */
+    private void playFart(final Sound s, int seat) {
+        AudioDeviceInfo media = audio.mediaBus();
+        if (media == null) {
+            media = audio.inner();
+        }
+        AudioDeviceInfo dev = media;
+        float pan = 0f;
+        if (seat == 1) {
+            pan = 1f;
+        } else if (seat == 2) {
+            dev = audio.byAddr("BUS08_FRONT_PASSENGER");
+            if (dev == null) {
+                dev = media;
+                pan = -1f;
+            }
+        } else if (seat == 3 || seat == 4) {
+            dev = audio.byAddr("BUS16_REAR_SEAT");
+            if (dev == null) {
+                dev = audio.byAddr("BUS20_REAR_MEDIA");
+            }
+            if (dev == null) {
+                dev = media;
+            }
+            pan = seat == 3 ? -1f : 1f;
         }
         stopMic();
         final int token = ++playSeq;
-        setStatus(s.label + (side < 0 ? " from the left." : side > 0 ? " from the right." : " from both sides."));
-        Player.play(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, true, side,
+        String route = dev == null || dev.getAddress() == null ? "default output" : dev.getAddress();
+        setStatus(s.label + ": " + SEATS[seat] + " (" + route + ").");
+        Player.play(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, true, pan,
                 (ok, msg) -> runOnUiThread(() -> {
                     if (token == playSeq && !ok) {
                         setStatus("Could not play " + s.label + ". " + ascii(msg));
@@ -1077,6 +1076,36 @@ public class HomeActivity extends Activity {
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         scan.addView(sb);
         page.addView(scan, Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        LinearLayout test = Ui.card(this);
+        test.addView(Ui.text(this, "Speaker test", 20f, Ui.TXT, true));
+        test.addView(Ui.text(this, "Plays a two-note tone on one audio channel at a time so you can find "
+                + "which speakers each one drives. Note which seat you hear it from, and whether Left and "
+                + "Right differ.", 15f, Ui.DIM, false));
+        for (final AudioDeviceInfo d : audio.outputs()) {
+            final String addr = d.getAddress() == null || d.getAddress().isEmpty() ? "type " + d.getType() : d.getAddress();
+            LinearLayout r = Ui.row(this);
+            TextView nm = Ui.text(this, addr, 15f, Ui.TXT, false);
+            nm.setTypeface(Typeface.MONOSPACE);
+            r.addView(nm, Ui.lp(0, WRAP, 1f));
+            final String[] sideNames = {"Left", "Both", "Right"};
+            for (int k = 0; k < 3; k++) {
+                final int side = k - 1;
+                r.addView(Ui.button(this, sideNames[k], Ui.RAISE, Ui.TXT, () -> {
+                    stopMic();
+                    final int token = ++playSeq;
+                    setStatus("Test tone on " + addr + " (" + sideNames[side + 1].toLowerCase() + ").");
+                    Player.play(this, "test/tone.wav", null, d, AudioAttributes.USAGE_MEDIA, true, side,
+                            (ok, msg) -> runOnUiThread(() -> {
+                                if (token == playSeq && !ok) {
+                                    setStatus("No sound possible on " + addr + ". " + ascii(msg));
+                                }
+                            }));
+                }), Ui.lp(this, WRAP, WRAP, 0, 3));
+            }
+            test.addView(r);
+        }
+        page.addView(test, Ui.lp(this, MATCH, WRAP, 0, 6));
 
         String crash = null;
         try {
@@ -1130,6 +1159,12 @@ public class HomeActivity extends Activity {
                 }
             }
             boolean ecarx = VehicleRead.carFunction(this) != null;
+            boolean canInstall = false;
+            try {
+                canInstall = getPackageManager().canRequestPackageInstalls();
+            } catch (Throwable ignored) {
+            }
+            b.append("\nIn-app update install allowed: ").append(canInstall ? "yes" : "NO").append('\n');
             b.append("\nVehicle interface (ECARX): ").append(ecarx ? "available" : "NOT available").append('\n');
             b.append("Power state signal:  ").append(signal((int) VehicleRead.ID_IGNITION)).append('\n');
             b.append("Sentry mode signal:  ").append(signal(CarCtl.SENTRY)).append('\n');
@@ -1197,8 +1232,34 @@ public class HomeActivity extends Activity {
                         setUpdateMsg("Download failed (" + error + "). Try Open download in browser.");
                         return;
                     }
+                    boolean allowed = true;
+                    try {
+                        allowed = getPackageManager().canRequestPackageInstalls();
+                    } catch (Throwable ignored) {
+                    }
+                    if (!allowed) {
+                        // Android blocks installs from this app until the user allows it once.
+                        boolean opened = false;
+                        try {
+                            startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    android.net.Uri.parse("package:" + getPackageName())));
+                            opened = true;
+                        } catch (Throwable ignored) {
+                        }
+                        if (opened) {
+                            setUpdateMsg("Allow CarTalk to install apps on the screen that opened, come back, "
+                                    + "and tap Install update again.");
+                        } else if (Updater.openInBrowser(HomeActivity.this, url)) {
+                            setUpdateMsg("This head unit does not let CarTalk install updates itself, so the "
+                                    + "download was opened in the browser instead.");
+                        } else {
+                            setUpdateMsg("This head unit does not let CarTalk install updates itself. Download "
+                                    + "build " + latestBuild + " from " + Updater.RELEASES_PAGE);
+                        }
+                        return;
+                    }
                     if (Updater.install(HomeActivity.this, apk)) {
-                        setUpdateMsg("Installer opened. Confirm the install to finish.");
+                        setUpdateMsg("Installer opened. If nothing appeared, tap Open download in browser.");
                     } else if (Updater.openInBrowser(HomeActivity.this, url)) {
                         setUpdateMsg("The installer could not be opened from the app, so the download was "
                                 + "opened in the browser instead.");
