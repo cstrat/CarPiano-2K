@@ -1,76 +1,68 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""生成 app icon（🎹 鋼琴，5 個密度 + 圓形版）。
+"""Generates the CarTalk launcher icons: a white car with orange sound waves on dark.
 
-用法（喺 repo 根目錄）：python3 tools/make_icon.py
+Usage: python3 tools/make_icon.py   (needs Pillow; run from the repo root)
 """
 from PIL import Image, ImageDraw
-import os
 
-S = 512
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                   "app/src/main/res")
-
-
-def master(round_icon=False):
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-
-    # 背景：由上至下 深藍 → 青綠（漸變）
-    bg = Image.new("RGB", (S, S))
-    db = ImageDraw.Draw(bg)
-    for y in range(S):
-        t = y / (S - 1)
-        db.line([(0, y), (S, y)], fill=(int(30 + (8 - 30) * t),
-                                       int(34 + (120 - 34) * t),
-                                       int(70 + (156 - 70) * t)))
-    mask = Image.new("L", (S, S), 0)
-    md = ImageDraw.Draw(mask)
-    if round_icon:
-        md.ellipse([0, 0, S - 1, S - 1], fill=255)
-    else:
-        md.rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.22), fill=255)
-    img.paste(bg, (0, 0), mask)
-
-    d = ImageDraw.Draw(img)
-    kx0, ky0, kx1, ky1 = int(S * 0.09), int(S * 0.30), int(S * 0.91), int(S * 0.74)
-    n = 8
-    kw = (kx1 - kx0) / n
-
-    # 白鍵
-    for i in range(n):
-        x0 = kx0 + i * kw
-        d.rounded_rectangle([x0 + 2, ky0, x0 + kw - 2, ky1],
-                            radius=int(kw * 0.10), fill=(250, 250, 252))
-        d.rectangle([x0 + 2, ky0, x0 + kw - 2, ky0 + 6], fill=(226, 229, 236))
-
-    # 黑鍵（每 7 個白鍵之後排：0,1,3,4,5）
-    for i in range(n - 1):
-        if (i % 7) in (0, 1, 3, 4, 5):
-            cx = kx0 + (i + 1) * kw
-            bw = kw * 0.56
-            bh = (ky1 - ky0) * 0.60
-            d.rounded_rectangle([cx - bw / 2, ky0, cx + bw / 2, ky0 + bh],
-                                radius=int(bw * 0.18), fill=(22, 24, 32))
-
-    # 上面加一個跳音音符 ♪（用簡單圓 + 桿畫）
-    nx, ny = int(S * 0.30), int(S * 0.18)
-    r = int(S * 0.055)
-    d.ellipse([nx - r, ny - r * 0.78, nx + r, ny + r * 0.78], fill=(255, 209, 102))
-    d.rectangle([nx + r * 0.72, ny - int(S * 0.115), nx + r * 0.95, ny + r * 0.6],
-                fill=(255, 209, 102))
-    return img
+S = 1024
+DARK, WHITE, ORANGE = (18, 22, 29, 255), (242, 244, 247, 255), (255, 148, 71, 255)
+SIZES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 
 
-def save(img, name, size):
-    os.makedirs(os.path.dirname(name), exist_ok=True)
-    img.resize((size, size), Image.LANCZOS).save(name)
-    return name
+def glyph(scale=1.0):
+    """Car and waves on a transparent 1024 canvas, drawn in a 100-unit grid."""
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+
+    def u(v):
+        return (v - 50) * scale * S / 100 + S / 2
+
+    def pts(p):
+        return [(u(x), u(y)) for x, y in p]
+
+    d.polygon(pts([(26, 47), (34, 33), (36, 30.6), (39, 30), (55, 30), (58, 30.6), (60, 33), (68, 47)]), fill=WHITE)
+    d.rounded_rectangle([u(12), u(46), u(74), u(63)], radius=7 * scale * S / 100, fill=WHITE)
+    for cx in (28, 58):
+        d.ellipse([u(cx - 9.5), u(64 - 9.5), u(cx + 9.5), u(64 + 9.5)], fill=WHITE)
+        d.ellipse([u(cx - 5.5), u(64 - 5.5), u(cx + 5.5), u(64 + 5.5)], fill=DARK)
+
+    def wave(x, y0, bulge, height):
+        w = 4.5 * scale * S / 100
+        # Stamp circles along the curve: smoother than a thick polyline.
+        for i in range(401):
+            t = i / 400
+            cx = u(x + 2 * (1 - t) * t * bulge)
+            cy = u(y0 + t * height)
+            d.ellipse([cx - w / 2, cy - w / 2, cx + w / 2, cy + w / 2], fill=ORANGE)
+
+    wave(80, 45, 7, 19)
+    wave(87, 38, 12, 33)
+    return im
 
 
-base = master(False)
-rnd = master(True)
-for dpi, size in (("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)):
-    save(base, f"{OUT}/mipmap-{dpi}/ic_launcher.png", size)
-    save(rnd, f"{OUT}/mipmap-{dpi}/ic_launcher_round.png", size)
-save(base, f"{OUT}/mipmap-xxxhdpi/ic_launcher_foreground.png", 432)
-print("icons OK")
+def square():
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(im).rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.23), fill=DARK)
+    im.alpha_composite(glyph(1.0))
+    return im
+
+
+def round_icon():
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(im).ellipse([0, 0, S - 1, S - 1], fill=DARK)
+    im.alpha_composite(glyph(0.8))
+    return im
+
+
+if __name__ == "__main__":
+    sq, rd = square(), round_icon()
+    for name, px in SIZES.items():
+        base = "app/src/main/res/mipmap-%s/" % name
+        sq.resize((px, px), Image.LANCZOS).save(base + "ic_launcher.png")
+        rd.resize((px, px), Image.LANCZOS).save(base + "ic_launcher_round.png")
+    fg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    fg.alpha_composite(glyph(0.62))
+    fg.resize((432, 432), Image.LANCZOS).save("app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png")
+    sq.resize((512, 512), Image.LANCZOS).save("/tmp/cartalk-icon.png")
+    print("icons written")

@@ -1,6 +1,6 @@
-# CarPiano 2K
+# CarTalk
 
-An English rebuild of [jlunnn/CarPiano](https://github.com/jlunnn/CarPiano), a sound app for Zeekr head units (Android). The original plays a piano, recordings and alert tones through the car's **outside speaker** or the cabin, and can toggle a few vehicle functions. Its interface is Cantonese; the original README is kept as [README.zh-HK.md](README.zh-HK.md).
+CarTalk (repo name CarPiano-2K) is an English rebuild of [jlunnn/CarPiano](https://github.com/jlunnn/CarPiano), a sound app for Zeekr head units (Android). The original plays a piano, recordings and alert tones through the car's **outside speaker** or the cabin, and can toggle a few vehicle functions. Its interface is Cantonese; the original README is kept as [README.zh-HK.md](README.zh-HK.md).
 
 > Unofficial. Not affiliated with Zeekr, Geely or ECARX. Playing sound outside a vehicle on public roads may be restricted where you live. Use it lawfully and considerately.
 
@@ -12,7 +12,6 @@ An English rebuild of [jlunnn/CarPiano](https://github.com/jlunnn/CarPiano), a s
 | English home screen: Sounds, Live mic, Setup | In testing on a 7X |
 | Import your own MP3 / WAV files | In testing |
 | In-app update check and one-tap install | In testing |
-| Mirror: copy what the car is playing to the outside speaker | Experimental, in testing |
 | Whoopee: in-cabin prank sounds, left or right, with a delay | In testing |
 | Car controls, automations, piano | Not built yet |
 
@@ -22,18 +21,15 @@ The original Cantonese screens have been removed from this fork. The audio routi
 
 Every push to `main` builds an APK and publishes it under [Releases](../../releases). Download the newest `CarPiano-2K-build-N.apk` and install it on the head unit. Builds share one signing key, so each installs over the last.
 
-## Planned for the English rebuild
+## Not built yet
 
-- **Sounds**: a soundboard with unlimited named sounds in categories, USB import, and typed phrases spoken by text-to-speech.
-- **Live mic**: hold-to-talk or latch, cabin microphone straight to the outside speaker, with a volume cap and auto-off.
-- **Stream**: play music from USB or app storage through the outside speaker while the cabin keeps its own audio.
-- **Play**: the piano, plus more instruments.
-- **Car**: Sentry mode and ambient lighting toggles, live signals, and simple "when this happens, do that" automations.
-- **Setup**: a read-only scan of audio buses, microphones and vehicle signals for diagnosing a new car or firmware.
+- Typed phrases spoken by text-to-speech.
+- Choosing which cabin microphone feeds the live mic, and which seat a Whoopee sound comes from.
+- Sentry mode and ambient lighting toggles, and simple "when this happens, do that" automations.
 
 ## Bundled sounds
 
-Every bundled sound is synthesised from scratch for this project (see the commit history), so there is nothing third-party in the APK. Clips from TV shows, films or sport broadcasts are not bundled; add your own files with **Add sounds** and file them under F1, Memes, TV and film or Useful.
+Only a few synthesised courtesy tones and the Whoopee set ship in the APK, all made from scratch for this project. Clips from TV shows, films or sport broadcasts are not bundled. Add your own files with **Add sounds**, which can file a whole batch from Downloads or USB under My sounds, F1, Memes, TV and film, Useful or Whoopee.
 
 ## How it works
 

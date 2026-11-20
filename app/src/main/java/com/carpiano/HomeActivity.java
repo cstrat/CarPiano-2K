@@ -36,13 +36,12 @@ import java.util.List;
  */
 public class HomeActivity extends Activity {
 
-    private static final String[] PAGES = {"Sounds", "Live mic", "Mirror", "Whoopee", "Setup"};
-    private static final int P_SOUNDS = 0, P_MIC = 1, P_MIRROR = 2, P_WHOOPEE = 3, P_SETUP = 4;
+    private static final String[] PAGES = {"Sounds", "Live mic", "Whoopee", "Setup"};
+    private static final int P_SOUNDS = 0, P_MIC = 1, P_WHOOPEE = 2, P_SETUP = 3;
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static final int REQ_MIC = 77;
     private static final int REQ_FILES = 78;
-    private static final int REQ_PROJECTION = 79;
     private static final long LATCH_LIMIT_MS = 30000L;
 
     /** label, category, file under assets/sounds. */
@@ -53,29 +52,9 @@ public class HomeActivity extends Activity {
             {"Attention tone", "Courtesy", "attention-three-tone.wav"},
             {"Bike bell", "Courtesy", "bike-bell.wav"},
             {"Doorbell", "Courtesy", "doorbell.wav"},
+            {"Referee whistle", "Courtesy", "referee-whistle.wav"},
             {"Welcome chime", "Greetings", "welcome-chime.wav"},
             {"Goodbye chime", "Greetings", "goodbye-chime.wav"},
-            {"Ice cream van", "Fun", "ice-cream-van.wav"},
-            {"Happy birthday", "Fun", "happy-birthday.wav"},
-            {"Drum roll", "Fun", "drum-roll.wav"},
-            {"Ta-da", "Fun", "ta-da.wav"},
-            {"Level up", "Fun", "level-up.wav"},
-            {"Boing", "Fun", "boing.wav"},
-            {"Cuckoo", "Fun", "cuckoo.wav"},
-            {"Ka-ching", "Fun", "ka-ching.wav"},
-            {"Referee whistle", "Courtesy", "referee-whistle.wav"},
-            {"Race countdown", "Race day", "race-countdown.wav"},
-            {"Race car flyby", "Race day", "race-car-flyby.wav"},
-            {"Engine revs", "Race day", "engine-revs.wav"},
-            {"Pit radio chirp", "Race day", "pit-radio-chirp.wav"},
-            {"Victory fanfare", "Race day", "victory-fanfare.wav"},
-            {"Sad trombone", "Comedy", "sad-trombone.wav"},
-            {"Rimshot", "Comedy", "rimshot.wav"},
-            {"Wrong answer", "Comedy", "wrong-answer-buzzer.wav"},
-            {"Crickets", "Comedy", "crickets.wav"},
-            {"Dramatic sting", "Comedy", "dramatic-sting.wav"},
-            {"Slide whistle up", "Comedy", "slide-whistle-up.wav"},
-            {"Slide whistle down", "Comedy", "slide-whistle-down.wav"},
     };
     /** label, file under assets/farts. */
     private static final String[][] FARTS = {
@@ -89,8 +68,8 @@ public class HomeActivity extends Activity {
             {"Long rumble", "long-rumble.wav"},
     };
     /** Groups the user can file imported sounds under. */
-    private static final String[] USER_GROUPS = {"My sounds", "F1", "Memes", "TV and film", "Useful"};
-    private static final String[] BUILT_IN_CATEGORIES = {"Courtesy", "Greetings", "Race day", "Comedy", "Fun"};
+    private static final String[] USER_GROUPS = {"My sounds", "F1", "Memes", "TV and film", "Useful", "Whoopee"};
+    private static final String[] BUILT_IN_CATEGORIES = {"Courtesy", "Greetings"};
 
     private static final class Sound {
         final String label;
@@ -310,8 +289,6 @@ public class HomeActivity extends Activity {
             v = buildSounds();
         } else if (idx == P_MIC) {
             v = buildLiveMic();
-        } else if (idx == P_MIRROR) {
-            v = buildMirror();
         } else if (idx == P_WHOOPEE) {
             v = buildWhoopee();
         } else {
@@ -321,10 +298,6 @@ public class HomeActivity extends Activity {
         if (idx == P_MIC) {
             h.removeCallbacks(micTick);
             h.post(micTick);
-        }
-        if (idx == P_MIRROR) {
-            h.removeCallbacks(mirrorTick);
-            h.post(mirrorTick);
         }
     }
 
@@ -408,7 +381,7 @@ public class HomeActivity extends Activity {
         if (shown.isEmpty()) {
             TextView none = Ui.text(this, "My sounds".equals(category)
                     ? "Nothing here yet. Tap Add sounds to bring in MP3 or WAV files. Long-press a "
-                    + "sound afterwards to file it under F1, Memes, TV and film or Useful."
+                    + "sound afterwards to move it to another group."
                     : "Nothing in this category yet.", 16f, Ui.DIM, false);
             none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
             grid.addView(none);
@@ -513,6 +486,8 @@ public class HomeActivity extends Activity {
 
     // ----------------------------------------------------------------- import
 
+    private String importGroup = "My sounds";
+
     private void showImport() {
         if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, REQ_FILES);
@@ -522,18 +497,40 @@ public class HomeActivity extends Activity {
         LinearLayout page = Ui.col(this);
         int p = Ui.dp(this, 20);
         page.setPadding(p, Ui.dp(this, 14), p, 0);
+
+        final List<File> found = new ArrayList<>();
+        final List<TextView> names = new ArrayList<>();
+
         LinearLayout top = Ui.row(this);
-        TextView help = Ui.text(this, "Audio files found in Downloads, Music and on USB storage. "
-                + "Tap one to copy it into My sounds. MP3, WAV, M4A, OGG and FLAC are supported.",
-                15f, Ui.DIM, false);
+        TextView help = Ui.text(this, "Audio files in Downloads, Music and on USB. Tap one to add it, "
+                + "or add them all. MP3, WAV, M4A, OGG and FLAC work.", 15f, Ui.DIM, false);
         top.addView(help, Ui.lp(0, WRAP, 1f));
+        top.addView(Ui.button(this, "Add all", Ui.OK, Ui.BG, () -> {
+            for (int i = 0; i < found.size(); i++) {
+                importOne(found.get(i), names.get(i));
+            }
+        }), Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Scan again", Ui.RAISE, Ui.TXT, this::showImport),
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Done", Ui.TXT, Ui.BG, () -> {
-            category = "My sounds";
-            showPage(P_SOUNDS);
-        }), Ui.lp(this, Ui.dp(this, 140), WRAP, 0, 4));
+            category = "Whoopee".equals(importGroup) ? "All" : importGroup;
+            showPage("Whoopee".equals(importGroup) ? P_WHOOPEE : P_SOUNDS);
+        }), Ui.lp(this, Ui.dp(this, 120), WRAP, 0, 4));
         page.addView(top, Ui.lp(MATCH, WRAP, 0));
+
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout chips = Ui.row(this);
+        chips.addView(Ui.text(this, "File under", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
+        for (final String g : USER_GROUPS) {
+            boolean on = g.equals(importGroup);
+            chips.addView(Ui.button(this, g, on ? Ui.TXT : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
+                importGroup = g;
+                showImport();
+            }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        }
+        hs.addView(chips);
+        page.addView(hs, Ui.lp(MATCH, WRAP, 0));
 
         ScrollView sv = new ScrollView(this);
         final LinearLayout list = Ui.col(this);
@@ -543,10 +540,10 @@ public class HomeActivity extends Activity {
         host.addView(page, new FrameLayout.LayoutParams(MATCH, MATCH));
 
         new Thread(() -> {
-            final List<File> found = Library.findImportable();
+            final List<File> scan = Library.findImportable();
             runOnUiThread(() -> {
                 list.removeAllViews();
-                if (found.isEmpty()) {
+                if (scan.isEmpty()) {
                     TextView none = Ui.text(this, "No audio files found. Download MP3 or WAV files with "
                             + "the car's browser, or plug in a USB stick, then tap Scan again. If Android "
                             + "asked for permission to read files, allow it first.", 16f, Ui.DIM, false);
@@ -554,31 +551,39 @@ public class HomeActivity extends Activity {
                     list.addView(none);
                     return;
                 }
-                for (final File f : found) {
+                for (final File f : scan) {
                     LinearLayout r = Ui.col(this);
                     r.setBackground(Ui.box(this, Ui.SURF, Ui.LINE, 14));
                     int rp = Ui.dp(this, 14);
                     r.setPadding(rp, rp, rp, rp);
                     r.setClickable(true);
                     r.setFocusable(true);
-                    final TextView name = Ui.text(this, f.getName(), 17f, Ui.TXT, true);
+                    boolean have = new File(Library.dir(this), f.getName()).isFile();
+                    final TextView name = Ui.text(this, have ? f.getName() + "  (already added)" : f.getName(),
+                            17f, have ? Ui.DIM : Ui.TXT, true);
                     name.setSingleLine(true);
                     r.addView(name);
                     String parent = f.getParent() == null ? "" : f.getParent();
                     r.addView(Ui.text(this, parent + "  \u00b7  " + (f.length() / 1024) + " KB", 13f, Ui.DIM, false));
                     r.setOnClickListener(v -> importOne(f, name));
                     list.addView(r, Ui.lp(this, MATCH, WRAP, 0, 4));
+                    if (!have) {
+                        found.add(f);
+                        names.add(name);
+                    }
                 }
             });
         }, "import-scan").start();
     }
 
     private void importOne(final File f, final TextView name) {
+        final String group = importGroup;
         setStatus("Copying " + f.getName() + "...");
         new Thread(() -> {
             String err = null;
             try {
                 Library.importFile(getApplicationContext(), f);
+                getSharedPreferences("groups", MODE_PRIVATE).edit().putString(f.getName(), group).apply();
             } catch (Throwable t) {
                 err = t.getClass().getSimpleName() + ": " + t.getMessage();
             }
@@ -586,8 +591,8 @@ public class HomeActivity extends Activity {
             runOnUiThread(() -> {
                 if (e == null) {
                     name.setTextColor(Ui.OK);
-                    name.setText(f.getName() + "  (added)");
-                    setStatus("Added " + f.getName() + " to My sounds.");
+                    name.setText(f.getName() + "  (added to " + group + ")");
+                    setStatus("Added " + f.getName() + " to " + group + ".");
                 } else {
                     setStatus("Could not copy " + f.getName() + ". " + ascii(e));
                 }
@@ -729,138 +734,6 @@ public class HomeActivity extends Activity {
         mic.stop();
     }
 
-    // ----------------------------------------------------------------- mirror
-
-    private TextView mirrorBtn;
-    private TextView mirrorState;
-    private ProgressBar mirrorLevel;
-
-    private final Runnable mirrorTick = new Runnable() {
-        @Override
-        public void run() {
-            if (page != P_MIRROR) {
-                return;
-            }
-            refreshMirror();
-            h.postDelayed(this, 200);
-        }
-    };
-
-    private View buildMirror() {
-        LinearLayout page = Ui.row(this);
-        int p = Ui.dp(this, 20);
-        page.setPadding(p, p, p, p);
-
-        LinearLayout mid = Ui.col(this);
-        mid.setGravity(Gravity.CENTER);
-        mirrorBtn = Ui.button(this, "Start mirroring", Ui.OUT, Ui.BG, this::toggleMirror);
-        mirrorBtn.setTextSize(22f);
-        mid.addView(mirrorBtn, Ui.lp(Ui.dp(this, 320), Ui.dp(this, 120), 0));
-        mirrorState = Ui.text(this, "", 16f, Ui.DIM, true);
-        mirrorState.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams ms = Ui.lp(MATCH, WRAP, 0);
-        ms.topMargin = Ui.dp(this, 16);
-        mid.addView(mirrorState, ms);
-        mirrorLevel = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        mirrorLevel.setMax(100);
-        LinearLayout.LayoutParams ll = Ui.lp(Ui.dp(this, 320), Ui.dp(this, 12), 0);
-        ll.topMargin = Ui.dp(this, 12);
-        mid.addView(mirrorLevel, ll);
-        page.addView(mid, Ui.lp(0, MATCH, 1f));
-
-        LinearLayout side = Ui.card(this);
-        side.addView(Ui.text(this, "Experimental", 20f, Ui.TXT, true));
-        TextView note = Ui.text(this, "Copies whatever is playing in the car to the outside speaker while "
-                + "the cabin keeps playing as normal. Android will ask for permission to capture; say yes.\n\n"
-                + "Start your music first, then tap Start. If the bar stays flat, the head unit or that "
-                + "music app does not allow its audio to be captured. Loudness follows the volume slider.",
-                14f, Ui.DIM, false);
-        note.setPadding(Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6), 0);
-        side.addView(note);
-        page.addView(side, Ui.lp(Ui.dp(this, 360), MATCH, 0));
-        refreshMirror();
-        return page;
-    }
-
-    private void refreshMirror() {
-        if (mirrorBtn == null) {
-            return;
-        }
-        boolean on = MirrorService.running;
-        mirrorBtn.setText(on ? "Stop mirroring" : "Start mirroring");
-        mirrorBtn.setBackground(Ui.box(this, on ? Ui.TXT : Ui.OUT, 0, 14));
-        mirrorLevel.setProgress(MirrorService.level);
-        String err = MirrorService.error;
-        if (err != null) {
-            mirrorState.setText("Stopped: " + ascii(err));
-            mirrorState.setTextColor(Ui.OUT);
-        } else if (on) {
-            mirrorState.setText(MirrorService.heard > 0 ? "Mirroring to the outside speaker"
-                    : "Running, but no audio captured yet");
-            mirrorState.setTextColor(MirrorService.heard > 0 ? Ui.OK : Ui.DIM);
-        } else {
-            mirrorState.setText("Mirror is off");
-            mirrorState.setTextColor(Ui.DIM);
-        }
-    }
-
-    private void toggleMirror() {
-        try {
-            if (MirrorService.running) {
-                stopService(new Intent(this, MirrorService.class));
-                setStatus("Mirror stopped.");
-                return;
-            }
-            if (Build.VERSION.SDK_INT < 29) {
-                setStatus("Mirroring needs Android 10 or newer.");
-                return;
-            }
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
-                setStatus("Allow audio access, then tap Start again.");
-                return;
-            }
-            if (audio.outer() == null) {
-                setStatus("Outside speaker not found on this car. Setup lists the audio outputs it does have.");
-                return;
-            }
-            android.media.projection.MediaProjectionManager mpm =
-                    (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-            if (mpm == null) {
-                setStatus("This head unit has no capture service, so mirroring is not possible.");
-                return;
-            }
-            MirrorService.error = null;
-            startActivityForResult(mpm.createScreenCaptureIntent(), REQ_PROJECTION);
-        } catch (Throwable t) {
-            setStatus("Could not start mirroring: " + t.getClass().getSimpleName() + " " + ascii(t.getMessage()));
-        }
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_PROJECTION) {
-            return;
-        }
-        if (resultCode != RESULT_OK || data == null) {
-            setStatus("Capture permission was not given, so mirroring did not start.");
-            return;
-        }
-        try {
-            stopMic();
-            playSeq++;
-            Player.stop();
-            Intent svc = new Intent(this, MirrorService.class);
-            svc.putExtra(MirrorService.EXTRA_CODE, resultCode);
-            svc.putExtra(MirrorService.EXTRA_DATA, data);
-            startForegroundService(svc);
-            setStatus("Mirror starting.");
-        } catch (Throwable t) {
-            setStatus("Could not start mirroring: " + t.getClass().getSimpleName() + " " + ascii(t.getMessage()));
-        }
-    }
-
     // ---------------------------------------------------------------- whoopee
 
     private int fartSide;
@@ -901,54 +774,62 @@ public class HomeActivity extends Activity {
         LinearLayout grid = Ui.col(this);
         final int perRow = 3;
         LinearLayout rowView = null;
-        for (int i = 0; i <= FARTS.length; i++) {
+        final List<Sound> farts = new ArrayList<>();
+        for (String[] f : FARTS) {
+            farts.add(new Sound(f[0], "Whoopee", "farts/" + f[1], null));
+        }
+        for (Sound u : allSounds()) {
+            if (u.file != null && "Whoopee".equals(u.category)) {
+                farts.add(u);
+            }
+        }
+        for (int i = 0; i <= farts.size(); i++) {
             if (i % perRow == 0) {
                 rowView = new LinearLayout(this);
                 rowView.setOrientation(LinearLayout.HORIZONTAL);
                 grid.addView(rowView, Ui.lp(MATCH, WRAP, 0));
             }
             final int idx = i - 1;
-            TextView b = Ui.text(this, idx < 0 ? "Surprise me" : FARTS[idx][0], 19f,
+            TextView b = Ui.text(this, idx < 0 ? "Surprise me" : farts.get(idx).label, 19f,
                     idx < 0 ? Ui.BG : Ui.TXT, true);
             b.setGravity(Gravity.CENTER);
             b.setBackground(Ui.box(this, idx < 0 ? Ui.OUT : Ui.SURF, idx < 0 ? 0 : Ui.LINE, 18));
             b.setClickable(true);
             b.setFocusable(true);
-            b.setOnClickListener(v -> queueFart(idx < 0 ? random.nextInt(FARTS.length) : idx));
+            b.setOnClickListener(v -> queueFart(farts.get(idx < 0 ? random.nextInt(farts.size()) : idx)));
             rowView.addView(b, Ui.lp(this, 0, Ui.dp(this, 104), 1f, 6));
         }
         sv.addView(grid);
         page.addView(sv, Ui.lp(MATCH, 0, 1f));
         TextView note = Ui.text(this, "Always plays inside the cabin, whatever the Cabin / Outside switch says. "
-                + "Left and right use the car's stereo speakers.", 13f, Ui.DIM, false);
+                + "Left and right use the car's stereo speakers. Sounds you file under Whoopee appear here too.", 13f, Ui.DIM, false);
         note.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), 0);
         page.addView(note, Ui.lp(MATCH, WRAP, 0));
         return page;
     }
 
-    private void queueFart(final int idx) {
+    private void queueFart(final Sound s) {
         final int side = fartSide;
         if (fartDelaySec <= 0) {
-            playFart(idx, side);
+            playFart(s, side);
             return;
         }
         setStatus("Armed. Going off in " + fartDelaySec + " seconds.");
-        h.postDelayed(() -> playFart(idx, side), fartDelaySec * 1000L);
+        h.postDelayed(() -> playFart(s, side), fartDelaySec * 1000L);
     }
 
-    private void playFart(int idx, int side) {
+    private void playFart(final Sound s, int side) {
         AudioDeviceInfo dev = audio.mediaBus();
         if (dev == null) {
             dev = audio.inner();
         }
         stopMic();
         final int token = ++playSeq;
-        final String label = FARTS[idx][0];
-        setStatus(label + (side < 0 ? " from the left." : side > 0 ? " from the right." : " from both sides."));
-        Player.play(this, "farts/" + FARTS[idx][1], null, dev, AudioAttributes.USAGE_MEDIA, true, side,
+        setStatus(s.label + (side < 0 ? " from the left." : side > 0 ? " from the right." : " from both sides."));
+        Player.play(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, true, side,
                 (ok, msg) -> runOnUiThread(() -> {
                     if (token == playSeq && !ok) {
-                        setStatus("Could not play " + label + ". " + ascii(msg));
+                        setStatus("Could not play " + s.label + ". " + ascii(msg));
                     }
                 }));
     }

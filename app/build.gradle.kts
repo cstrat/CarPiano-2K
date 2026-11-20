@@ -24,7 +24,7 @@ android {
         minSdk = 28
         targetSdk = 28
         versionCode = 1000 + ciBuild
-        versionName = "2K build $ciBuild"
+        versionName = "CarTalk build $ciBuild"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
