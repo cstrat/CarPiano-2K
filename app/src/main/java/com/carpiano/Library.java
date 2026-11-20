@@ -57,6 +57,27 @@ final class Library {
         return c.getSharedPreferences("groups", Context.MODE_PRIVATE).getString(f.getName(), "My sounds");
     }
 
+    private static final int[] PALETTE = {0xFFFF6B6B, 0xFFB79CFF, 0xFF5FD3A0, 0xFFFF8FC7, 0xFF6CB4FF,
+            0xFFF5C451, 0xFF5CD6D6, 0xFFFFA36C, 0xFFA8D65C, 0xFFD69CFF};
+
+    /** A group's colour: the user's choice if they made one, otherwise assigned by position. */
+    static int colorOf(Context c, String group) {
+        android.content.SharedPreferences p = c.getSharedPreferences("group_colors", Context.MODE_PRIVATE);
+        if (p.contains(group)) {
+            return p.getInt(group, PALETTE[0]);
+        }
+        int i = allGroups(c).indexOf(group);
+        return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
+    }
+
+    static int[] palette() {
+        return PALETTE.clone();
+    }
+
+    static void setColor(Context c, String group, int color) {
+        c.getSharedPreferences("group_colors", Context.MODE_PRIVATE).edit().putInt(group, color).apply();
+    }
+
     static boolean isFav(Context c, File f) {
         return c.getSharedPreferences("favs", Context.MODE_PRIVATE).getBoolean(f.getName(), false);
     }
