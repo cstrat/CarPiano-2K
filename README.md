@@ -29,7 +29,7 @@ Every push to `main` builds an APK and publishes it under [Releases](../../relea
 
 ## Bundled sounds
 
-Only a few synthesised courtesy tones and the Whoopee set ship in the APK, all made from scratch for this project. Clips from TV shows, films or sport broadcasts are not bundled. Add your own files with **Add sounds**, which can file a whole batch from Downloads or USB under My sounds, F1, Memes, TV and film, Useful or Whoopee.
+Only a few synthesised courtesy tones and the Whoopee set ship in the APK, all made from scratch for this project. Clips from TV shows, films or sport broadcasts are not bundled. Add your own files with **Add sounds**, which can file a whole batch from Downloads or USB under a preset group (My sounds, F1, Memes, TV and film, Useful, Whoopee) or one you create.
 
 ## How it works
 

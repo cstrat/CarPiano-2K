@@ -67,7 +67,7 @@ public class HomeActivity extends Activity {
             {"Trouser trumpet", "trouser-trumpet.wav"},
             {"Long rumble", "long-rumble.wav"},
     };
-    /** Groups the user can file imported sounds under. */
+    /** Preset groups the user can file imported sounds under. They can add their own too. */
     private static final String[] USER_GROUPS = {"My sounds", "F1", "Memes", "TV and film", "Useful", "Whoopee"};
     private static final String[] BUILT_IN_CATEGORIES = {"Courtesy", "Greetings"};
 
@@ -339,7 +339,7 @@ public class HomeActivity extends Activity {
             cats.add(c);
         }
         List<Sound> everything = allSounds();
-        for (String g : USER_GROUPS) {
+        for (String g : userGroups()) {
             boolean used = "My sounds".equals(g);
             for (Sound s : everything) {
                 if (s.file != null && s.category.equals(g)) {
@@ -421,19 +421,20 @@ public class HomeActivity extends Activity {
         t.setOnClickListener(v -> play(s));
         if (s.file != null) {
             t.setOnLongClickListener(v -> {
-                final String[] items = new String[USER_GROUPS.length + 1];
-                for (int k = 0; k < USER_GROUPS.length; k++) {
-                    items[k] = "Move to " + USER_GROUPS[k];
+                final List<String> groups = userGroups();
+                final String[] items = new String[groups.size() + 2];
+                for (int k = 0; k < groups.size(); k++) {
+                    items[k] = "Move to " + groups.get(k);
                 }
-                items[USER_GROUPS.length] = "Remove from the app";
+                items[groups.size()] = "Move to a new group...";
+                items[groups.size() + 1] = "Remove from the app";
                 new android.app.AlertDialog.Builder(this)
                         .setTitle(s.label)
                         .setItems(items, (d, which) -> {
-                            if (which < USER_GROUPS.length) {
-                                getSharedPreferences("groups", MODE_PRIVATE).edit()
-                                        .putString(s.file.getName(), USER_GROUPS[which]).apply();
-                                category = USER_GROUPS[which];
-                                setStatus("Moved " + s.label + " to " + USER_GROUPS[which] + ".");
+                            if (which < groups.size()) {
+                                moveSound(s, groups.get(which));
+                            } else if (which == groups.size()) {
+                                promptNewGroup(name -> moveSound(s, name));
                             } else {
                                 playSeq++;
                                 Player.stop();
@@ -441,8 +442,8 @@ public class HomeActivity extends Activity {
                                         .remove(s.file.getName()).apply();
                                 setStatus(s.file.delete() ? "Removed " + s.label + "."
                                         : "Could not remove " + s.label + ".");
+                                showPage(P_SOUNDS);
                             }
-                            showPage(P_SOUNDS);
                         })
                         .setNegativeButton("Cancel", null)
                         .show();
@@ -484,6 +485,130 @@ public class HomeActivity extends Activity {
                 }));
     }
 
+    // ----------------------------------------------------------------- groups
+
+    private interface NameCb {
+        void got(String name);
+    }
+
+    private List<String> customGroups() {
+        List<String> out = new ArrayList<>();
+        String raw = getSharedPreferences("groups_meta", MODE_PRIVATE).getString("custom", "");
+        for (String g : raw.split("\n")) {
+            if (!g.trim().isEmpty()) {
+                out.add(g.trim());
+            }
+        }
+        return out;
+    }
+
+    private void saveCustomGroups(List<String> groups) {
+        StringBuilder b = new StringBuilder();
+        for (String g : groups) {
+            b.append(g).append('\n');
+        }
+        getSharedPreferences("groups_meta", MODE_PRIVATE).edit().putString("custom", b.toString()).apply();
+    }
+
+    /** Presets first, then the user's own groups. */
+    private List<String> userGroups() {
+        List<String> out = new ArrayList<>();
+        for (String g : USER_GROUPS) {
+            out.add(g);
+        }
+        out.addAll(customGroups());
+        return out;
+    }
+
+    private boolean isCustomGroup(String name) {
+        return customGroups().contains(name);
+    }
+
+    private boolean groupNameTaken(String name) {
+        if ("All".equalsIgnoreCase(name)) {
+            return true;
+        }
+        for (String g : BUILT_IN_CATEGORIES) {
+            if (g.equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        for (String g : userGroups()) {
+            if (g.equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void promptNewGroup(final NameCb cb) {
+        final android.widget.EditText in = new android.widget.EditText(this);
+        in.setHint("Group name");
+        in.setSingleLine(true);
+        in.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("New group")
+                .setView(in)
+                .setPositiveButton("Create", (d, w) -> {
+                    String name = in.getText().toString().replace('\n', ' ').trim();
+                    if (name.isEmpty()) {
+                        setStatus("No group created: the name was empty.");
+                        return;
+                    }
+                    if (groupNameTaken(name)) {
+                        setStatus("There is already a group called " + name + ".");
+                        return;
+                    }
+                    List<String> custom = customGroups();
+                    custom.add(name);
+                    saveCustomGroups(custom);
+                    setStatus("Created group " + name + ".");
+                    cb.got(name);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void confirmDeleteGroup(final String name) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Delete group " + name + "?")
+                .setMessage("Its sounds are kept and move to My sounds.")
+                .setPositiveButton("Delete", (d, w) -> {
+                    List<String> custom = customGroups();
+                    custom.remove(name);
+                    saveCustomGroups(custom);
+                    SharedPreferences groups = getSharedPreferences("groups", MODE_PRIVATE);
+                    SharedPreferences.Editor e = groups.edit();
+                    for (java.util.Map.Entry<String, ?> en : groups.getAll().entrySet()) {
+                        if (name.equals(en.getValue())) {
+                            e.putString(en.getKey(), "My sounds");
+                        }
+                    }
+                    e.apply();
+                    if (name.equals(importGroup)) {
+                        importGroup = "My sounds";
+                    }
+                    if (name.equals(category)) {
+                        category = "All";
+                    }
+                    setStatus("Deleted group " + name + ".");
+                    showImport();
+                })
+                .setNegativeButton("Keep", null)
+                .show();
+    }
+
+    private void moveSound(Sound s, String group) {
+        getSharedPreferences("groups", MODE_PRIVATE).edit().putString(s.file.getName(), group).apply();
+        setStatus("Moved " + s.label + " to " + group + ".");
+        if ("Whoopee".equals(group)) {
+            showPage(P_WHOOPEE);
+        } else {
+            category = group;
+            showPage(P_SOUNDS);
+        }
+    }
+
     // ----------------------------------------------------------------- import
 
     private String importGroup = "My sounds";
@@ -502,8 +627,8 @@ public class HomeActivity extends Activity {
         final List<TextView> names = new ArrayList<>();
 
         LinearLayout top = Ui.row(this);
-        TextView help = Ui.text(this, "Audio files in Downloads, Music and on USB. Tap one to add it, "
-                + "or add them all. MP3, WAV, M4A, OGG and FLAC work.", 15f, Ui.DIM, false);
+        TextView help = Ui.text(this, "Audio files in Downloads, Music and on USB. Pick a group, then tap "
+                + "a file or Add all. Long-press a group you created to delete it.", 15f, Ui.DIM, false);
         top.addView(help, Ui.lp(0, WRAP, 1f));
         top.addView(Ui.button(this, "Add all", Ui.OK, Ui.BG, () -> {
             for (int i = 0; i < found.size(); i++) {
@@ -522,13 +647,24 @@ public class HomeActivity extends Activity {
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = Ui.row(this);
         chips.addView(Ui.text(this, "File under", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
-        for (final String g : USER_GROUPS) {
+        for (final String g : userGroups()) {
             boolean on = g.equals(importGroup);
-            chips.addView(Ui.button(this, g, on ? Ui.TXT : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
+            TextView chip = Ui.button(this, g, on ? Ui.TXT : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
                 importGroup = g;
                 showImport();
-            }), Ui.lp(this, WRAP, WRAP, 0, 4));
+            });
+            if (isCustomGroup(g)) {
+                chip.setOnLongClickListener(v -> {
+                    confirmDeleteGroup(g);
+                    return true;
+                });
+            }
+            chips.addView(chip, Ui.lp(this, WRAP, WRAP, 0, 4));
         }
+        chips.addView(Ui.button(this, "+ New group", Ui.RAISE, Ui.TXT, () -> promptNewGroup(name -> {
+            importGroup = name;
+            showImport();
+        })), Ui.lp(this, WRAP, WRAP, 0, 4));
         hs.addView(chips);
         page.addView(hs, Ui.lp(MATCH, WRAP, 0));
 
