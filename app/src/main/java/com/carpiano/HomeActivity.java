@@ -434,7 +434,7 @@ public class HomeActivity extends Activity {
                             if (which < groups.size()) {
                                 moveSound(s, groups.get(which));
                             } else if (which == groups.size()) {
-                                promptNewGroup(name -> moveSound(s, name));
+                                promptNewGroup(created -> moveSound(s, created));
                             } else {
                                 playSeq++;
                                 Player.stop();
