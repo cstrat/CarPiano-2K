@@ -11,6 +11,10 @@ val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
+// GitHub Actions run number. Release tags are build-<n>, and the in-app
+// updater compares this against the newest tag. 0 for local builds.
+val ciBuild = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
+
 android {
     namespace = "com.carpiano"
     compileSdk = 36
@@ -19,8 +23,8 @@ android {
         applicationId = "com.carpiano"
         minSdk = 28
         targetSdk = 28
-        versionCode = 54
-        versionName = "3.0"
+        versionCode = 1000 + ciBuild
+        versionName = "2K build $ciBuild"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
