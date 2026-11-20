@@ -54,6 +54,16 @@ final class Player {
     /** Exactly one of asset (path under assets/) or file is non-null. */
     static void play(final Context ctx, final String asset, final File file,
                      final AudioDeviceInfo dev, final int usage, final Cb cb) {
+        play(ctx, asset, file, dev, usage, false, 0f, cb);
+    }
+
+    /**
+     * @param stereo force a stereo output so the sound can be placed left or right
+     * @param pan    -1 = left only, 0 = centre, 1 = right only (used when stereo is true)
+     */
+    static void play(final Context ctx, final String asset, final File file,
+                     final AudioDeviceInfo dev, final int usage, final boolean stereo,
+                     final float pan, final Cb cb) {
         final int my = ++gen;
         final Context app = ctx.getApplicationContext();
         new Thread(() -> {
@@ -61,10 +71,10 @@ final class Player {
                 String name = asset != null ? asset : file.getName();
                 boolean played = false;
                 if (name.toLowerCase().endsWith(".wav")) {
-                    played = playWav(app, asset, file, dev, usage, my);
+                    played = playWav(app, asset, file, dev, usage, my, stereo, pan);
                 }
                 if (!played) {
-                    playDecoded(app, asset, file, dev, usage, my);
+                    playDecoded(app, asset, file, dev, usage, my, stereo, pan);
                 }
                 cb.done(true, gen == my ? "finished" : "stopped");
             } catch (Throwable t) {
@@ -79,10 +89,18 @@ final class Player {
         final AudioTrack track;
         final int bufBytes;
         final int my;
+        final int inCh;
+        final int outCh;
+        final double gl;
+        final double gr;
 
-        Out(int rate, int channels, AudioDeviceInfo dev, int usage, int my) {
+        Out(int rate, int channels, AudioDeviceInfo dev, int usage, int my, boolean stereo, float pan) {
             this.my = my;
-            int mask = channels >= 2 ? AudioFormat.CHANNEL_OUT_STEREO : AudioFormat.CHANNEL_OUT_MONO;
+            inCh = channels >= 2 ? 2 : 1;
+            outCh = stereo ? 2 : inCh;
+            gl = stereo && pan > 0 ? 1.0 - pan : 1.0;
+            gr = stereo && pan < 0 ? 1.0 + pan : 1.0;
+            int mask = outCh == 2 ? AudioFormat.CHANNEL_OUT_STEREO : AudioFormat.CHANNEL_OUT_MONO;
             int min = AudioTrack.getMinBufferSize(rate, mask, AudioFormat.ENCODING_PCM_16BIT);
             bufBytes = Math.max(min * 2, 8192);
             track = new AudioTrack.Builder()
@@ -108,24 +126,49 @@ final class Player {
             return gen == my;
         }
 
-        /** Applies the current volume and writes 16-bit little-endian PCM. */
+        private static void put(byte[] o, int at, double v) {
+            int x = (int) Math.round(v);
+            if (x > 32767) {
+                x = 32767;
+            } else if (x < -32768) {
+                x = -32768;
+            }
+            o[at] = (byte) (x & 0xFF);
+            o[at + 1] = (byte) ((x >> 8) & 0xFF);
+        }
+
+        /** Applies volume and left/right placement, then writes 16-bit little-endian PCM. */
         void write(byte[] b, int off, int len) {
             double g = gainPct / 100.0;
-            if (g != 1.0) {
-                for (int i = off; i + 1 < off + len; i += 2) {
-                    int s = (short) ((b[i] & 0xFF) | (b[i + 1] << 8));
-                    int v = (int) Math.round(s * g);
-                    b[i] = (byte) (v & 0xFF);
-                    b[i + 1] = (byte) ((v >> 8) & 0xFF);
+            byte[] o;
+            int oo;
+            int ol;
+            if (outCh == 2 && inCh == 1) {
+                o = new byte[len * 2];
+                for (int i = 0; i + 1 < len; i += 2) {
+                    int s = (short) ((b[off + i] & 0xFF) | (b[off + i + 1] << 8));
+                    put(o, i * 2, s * g * gl);
+                    put(o, i * 2 + 2, s * g * gr);
                 }
+                oo = 0;
+                ol = len * 2;
+            } else {
+                for (int i = 0; i + 1 < len; i += 2) {
+                    int s = (short) ((b[off + i] & 0xFF) | (b[off + i + 1] << 8));
+                    double k = outCh == 2 ? ((i / 2) % 2 == 0 ? gl : gr) : 1.0;
+                    put(b, off + i, s * g * k);
+                }
+                o = b;
+                oo = off;
+                ol = len;
             }
-            int end = off + len;
-            while (off < end && live()) {
-                int n = track.write(b, off, Math.min(4096, end - off));
+            int end = oo + ol;
+            while (oo < end && live()) {
+                int n = track.write(o, oo, Math.min(4096, end - oo));
                 if (n <= 0) {
                     break;
                 }
-                off += n;
+                oo += n;
             }
         }
 
@@ -164,7 +207,7 @@ final class Player {
 
     /** Returns false if the file is not plain 16-bit PCM, so the decoder path can try it. */
     private static boolean playWav(Context ctx, String asset, File file, AudioDeviceInfo dev,
-                                   int usage, int my) throws Exception {
+                                   int usage, int my, boolean stereo, float pan) throws Exception {
         byte[] b;
         try (InputStream in = asset != null ? ctx.getAssets().open(asset) : new FileInputStream(file)) {
             b = Diag.readAll(in);
@@ -196,7 +239,7 @@ final class Player {
                 || channels < 1 || channels > 2) {
             return false;
         }
-        Out out = new Out(rate, channels, dev, usage, my);
+        Out out = new Out(rate, channels, dev, usage, my, stereo, pan);
         try {
             out.write(b, dataOff, dataLen & ~1);
         } finally {
@@ -216,7 +259,7 @@ final class Player {
     // ----------------------------------------------------------------- decoder
 
     private static void playDecoded(Context ctx, String asset, File file, AudioDeviceInfo dev,
-                                    int usage, int my) throws Exception {
+                                    int usage, int my, boolean stereo, float pan) throws Exception {
         MediaExtractor ex = new MediaExtractor();
         MediaCodec codec = null;
         Out out = null;
@@ -269,7 +312,7 @@ final class Player {
                         if (out == null) {
                             MediaFormat of = codec.getOutputFormat();
                             out = new Out(of.getInteger(MediaFormat.KEY_SAMPLE_RATE),
-                                    of.getInteger(MediaFormat.KEY_CHANNEL_COUNT), dev, usage, my);
+                                    of.getInteger(MediaFormat.KEY_CHANNEL_COUNT), dev, usage, my, stereo, pan);
                         }
                         ByteBuffer ob = codec.getOutputBuffer(oi);
                         if (ob != null) {

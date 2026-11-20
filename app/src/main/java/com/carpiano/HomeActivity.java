@@ -36,11 +36,13 @@ import java.util.List;
  */
 public class HomeActivity extends Activity {
 
-    private static final String[] PAGES = {"Sounds", "Live mic", "Setup"};
+    private static final String[] PAGES = {"Sounds", "Live mic", "Mirror", "Whoopee", "Setup"};
+    private static final int P_SOUNDS = 0, P_MIC = 1, P_MIRROR = 2, P_WHOOPEE = 3, P_SETUP = 4;
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static final int REQ_MIC = 77;
     private static final int REQ_FILES = 78;
+    private static final int REQ_PROJECTION = 79;
     private static final long LATCH_LIMIT_MS = 30000L;
 
     /** label, category, file under assets/sounds. */
@@ -58,8 +60,37 @@ public class HomeActivity extends Activity {
             {"Drum roll", "Fun", "drum-roll.wav"},
             {"Ta-da", "Fun", "ta-da.wav"},
             {"Level up", "Fun", "level-up.wav"},
+            {"Boing", "Fun", "boing.wav"},
+            {"Cuckoo", "Fun", "cuckoo.wav"},
+            {"Ka-ching", "Fun", "ka-ching.wav"},
+            {"Referee whistle", "Courtesy", "referee-whistle.wav"},
+            {"Race countdown", "Race day", "race-countdown.wav"},
+            {"Race car flyby", "Race day", "race-car-flyby.wav"},
+            {"Engine revs", "Race day", "engine-revs.wav"},
+            {"Pit radio chirp", "Race day", "pit-radio-chirp.wav"},
+            {"Victory fanfare", "Race day", "victory-fanfare.wav"},
+            {"Sad trombone", "Comedy", "sad-trombone.wav"},
+            {"Rimshot", "Comedy", "rimshot.wav"},
+            {"Wrong answer", "Comedy", "wrong-answer-buzzer.wav"},
+            {"Crickets", "Comedy", "crickets.wav"},
+            {"Dramatic sting", "Comedy", "dramatic-sting.wav"},
+            {"Slide whistle up", "Comedy", "slide-whistle-up.wav"},
+            {"Slide whistle down", "Comedy", "slide-whistle-down.wav"},
     };
-    private static final String[] CATEGORIES = {"All", "Courtesy", "Greetings", "Fun", "My sounds"};
+    /** label, file under assets/farts. */
+    private static final String[][] FARTS = {
+            {"Quick toot", "quick-toot.wav"},
+            {"Tiny pip", "tiny-pip.wav"},
+            {"Squeaker", "squeaker.wav"},
+            {"Rising question", "rising-question.wav"},
+            {"Sputter", "sputter.wav"},
+            {"Two-parter", "two-parter.wav"},
+            {"Trouser trumpet", "trouser-trumpet.wav"},
+            {"Long rumble", "long-rumble.wav"},
+    };
+    /** Groups the user can file imported sounds under. */
+    private static final String[] USER_GROUPS = {"My sounds", "F1", "Memes", "TV and film", "Useful"};
+    private static final String[] BUILT_IN_CATEGORIES = {"Courtesy", "Greetings", "Race day", "Comedy", "Fun"};
 
     private static final class Sound {
         final String label;
@@ -106,7 +137,7 @@ public class HomeActivity extends Activity {
     private final Runnable micTick = new Runnable() {
         @Override
         public void run() {
-            if (page != 1) {
+            if (page != P_MIC) {
                 return;
             }
             if (micLevel != null) {
@@ -141,7 +172,7 @@ public class HomeActivity extends Activity {
             Prefs.repair(this);
             Player.setGainPercent(sp.getInt("vol_pct", 60));
             setContentView(buildRoot());
-            showPage(0);
+            showPage(P_SOUNDS);
             checkUpdate(false);
         } catch (Throwable t) {
             setContentView(errorView(t));
@@ -204,7 +235,7 @@ public class HomeActivity extends Activity {
         title = Ui.text(this, "", 26f, Ui.TXT, true);
         bar.addView(title, Ui.lp(0, WRAP, 1f));
 
-        updateBanner = Ui.button(this, "Update available", Ui.OK, Ui.BG, () -> showPage(2));
+        updateBanner = Ui.button(this, "Update available", Ui.OK, Ui.BG, () -> showPage(P_SETUP));
         updateBanner.setVisibility(View.GONE);
         bar.addView(updateBanner, Ui.lp(this, WRAP, WRAP, 0, 6));
 
@@ -263,7 +294,7 @@ public class HomeActivity extends Activity {
     }
 
     private void showPage(int idx) {
-        if (page == 1 && idx != 1) {
+        if (page == P_MIC && idx != P_MIC) {
             stopMic();
         }
         page = idx;
@@ -275,17 +306,25 @@ public class HomeActivity extends Activity {
         title.setText(PAGES[idx]);
         host.removeAllViews();
         View v;
-        if (idx == 0) {
+        if (idx == P_SOUNDS) {
             v = buildSounds();
-        } else if (idx == 1) {
+        } else if (idx == P_MIC) {
             v = buildLiveMic();
+        } else if (idx == P_MIRROR) {
+            v = buildMirror();
+        } else if (idx == P_WHOOPEE) {
+            v = buildWhoopee();
         } else {
             v = buildSetup();
         }
         host.addView(v, new FrameLayout.LayoutParams(MATCH, MATCH));
-        if (idx == 1) {
+        if (idx == P_MIC) {
             h.removeCallbacks(micTick);
             h.post(micTick);
+        }
+        if (idx == P_MIRROR) {
+            h.removeCallbacks(mirrorTick);
+            h.post(mirrorTick);
         }
     }
 
@@ -303,8 +342,9 @@ public class HomeActivity extends Activity {
             out.add(new Sound(b[0], b[1], b[2], null));
         }
         try {
+            SharedPreferences groups = getSharedPreferences("groups", MODE_PRIVATE);
             for (File f : Library.userSounds(this)) {
-                out.add(new Sound(Library.label(f), "My sounds", null, f));
+                out.add(new Sound(Library.label(f), groups.getString(f.getName(), "My sounds"), null, f));
             }
         } catch (Throwable ignored) {
         }
@@ -320,11 +360,29 @@ public class HomeActivity extends Activity {
         HorizontalScrollView hs = new HorizontalScrollView(this);
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = Ui.row(this);
-        for (final String c : CATEGORIES) {
+        List<String> cats = new ArrayList<>();
+        cats.add("All");
+        for (String c : BUILT_IN_CATEGORIES) {
+            cats.add(c);
+        }
+        List<Sound> everything = allSounds();
+        for (String g : USER_GROUPS) {
+            boolean used = "My sounds".equals(g);
+            for (Sound s : everything) {
+                if (s.file != null && s.category.equals(g)) {
+                    used = true;
+                    break;
+                }
+            }
+            if (used) {
+                cats.add(g);
+            }
+        }
+        for (final String c : cats) {
             boolean on = c.equals(category);
             TextView chip = Ui.button(this, c, on ? Ui.TXT : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
                 category = c;
-                showPage(0);
+                showPage(P_SOUNDS);
             });
             chips.addView(chip, Ui.lp(this, WRAP, WRAP, 0, 4));
         }
@@ -342,14 +400,15 @@ public class HomeActivity extends Activity {
         ScrollView sv = new ScrollView(this);
         LinearLayout grid = Ui.col(this);
         List<Sound> shown = new ArrayList<>();
-        for (Sound s : allSounds()) {
+        for (Sound s : everything) {
             if ("All".equals(category) || s.category.equals(category)) {
                 shown.add(s);
             }
         }
         if (shown.isEmpty()) {
             TextView none = Ui.text(this, "My sounds".equals(category)
-                    ? "Nothing here yet. Tap Add sounds to bring in MP3 or WAV files."
+                    ? "Nothing here yet. Tap Add sounds to bring in MP3 or WAV files. Long-press a "
+                    + "sound afterwards to file it under F1, Memes, TV and film or Useful."
                     : "Nothing in this category yet.", 16f, Ui.DIM, false);
             none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
             grid.addView(none);
@@ -389,20 +448,30 @@ public class HomeActivity extends Activity {
         t.setOnClickListener(v -> play(s));
         if (s.file != null) {
             t.setOnLongClickListener(v -> {
+                final String[] items = new String[USER_GROUPS.length + 1];
+                for (int k = 0; k < USER_GROUPS.length; k++) {
+                    items[k] = "Move to " + USER_GROUPS[k];
+                }
+                items[USER_GROUPS.length] = "Remove from the app";
                 new android.app.AlertDialog.Builder(this)
-                        .setTitle("Remove " + s.label + "?")
-                        .setMessage("This deletes the sound from the app.")
-                        .setPositiveButton("Remove", (d, w) -> {
-                            playSeq++;
-                            Player.stop();
-                            if (s.file.delete()) {
-                                setStatus("Removed " + s.label + ".");
+                        .setTitle(s.label)
+                        .setItems(items, (d, which) -> {
+                            if (which < USER_GROUPS.length) {
+                                getSharedPreferences("groups", MODE_PRIVATE).edit()
+                                        .putString(s.file.getName(), USER_GROUPS[which]).apply();
+                                category = USER_GROUPS[which];
+                                setStatus("Moved " + s.label + " to " + USER_GROUPS[which] + ".");
                             } else {
-                                setStatus("Could not remove " + s.label + ".");
+                                playSeq++;
+                                Player.stop();
+                                getSharedPreferences("groups", MODE_PRIVATE).edit()
+                                        .remove(s.file.getName()).apply();
+                                setStatus(s.file.delete() ? "Removed " + s.label + "."
+                                        : "Could not remove " + s.label + ".");
                             }
-                            showPage(0);
+                            showPage(P_SOUNDS);
                         })
-                        .setNegativeButton("Keep", null)
+                        .setNegativeButton("Cancel", null)
                         .show();
                 return true;
             });
@@ -462,7 +531,7 @@ public class HomeActivity extends Activity {
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Done", Ui.TXT, Ui.BG, () -> {
             category = "My sounds";
-            showPage(0);
+            showPage(P_SOUNDS);
         }), Ui.lp(this, Ui.dp(this, 140), WRAP, 0, 4));
         page.addView(top, Ui.lp(MATCH, WRAP, 0));
 
@@ -658,6 +727,230 @@ public class HomeActivity extends Activity {
         latched = false;
         h.removeCallbacks(latchOff);
         mic.stop();
+    }
+
+    // ----------------------------------------------------------------- mirror
+
+    private TextView mirrorBtn;
+    private TextView mirrorState;
+    private ProgressBar mirrorLevel;
+
+    private final Runnable mirrorTick = new Runnable() {
+        @Override
+        public void run() {
+            if (page != P_MIRROR) {
+                return;
+            }
+            refreshMirror();
+            h.postDelayed(this, 200);
+        }
+    };
+
+    private View buildMirror() {
+        LinearLayout page = Ui.row(this);
+        int p = Ui.dp(this, 20);
+        page.setPadding(p, p, p, p);
+
+        LinearLayout mid = Ui.col(this);
+        mid.setGravity(Gravity.CENTER);
+        mirrorBtn = Ui.button(this, "Start mirroring", Ui.OUT, Ui.BG, this::toggleMirror);
+        mirrorBtn.setTextSize(22f);
+        mid.addView(mirrorBtn, Ui.lp(Ui.dp(this, 320), Ui.dp(this, 120), 0));
+        mirrorState = Ui.text(this, "", 16f, Ui.DIM, true);
+        mirrorState.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams ms = Ui.lp(MATCH, WRAP, 0);
+        ms.topMargin = Ui.dp(this, 16);
+        mid.addView(mirrorState, ms);
+        mirrorLevel = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        mirrorLevel.setMax(100);
+        LinearLayout.LayoutParams ll = Ui.lp(Ui.dp(this, 320), Ui.dp(this, 12), 0);
+        ll.topMargin = Ui.dp(this, 12);
+        mid.addView(mirrorLevel, ll);
+        page.addView(mid, Ui.lp(0, MATCH, 1f));
+
+        LinearLayout side = Ui.card(this);
+        side.addView(Ui.text(this, "Experimental", 20f, Ui.TXT, true));
+        TextView note = Ui.text(this, "Copies whatever is playing in the car to the outside speaker while "
+                + "the cabin keeps playing as normal. Android will ask for permission to capture; say yes.\n\n"
+                + "Start your music first, then tap Start. If the bar stays flat, the head unit or that "
+                + "music app does not allow its audio to be captured. Loudness follows the volume slider.",
+                14f, Ui.DIM, false);
+        note.setPadding(Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6), 0);
+        side.addView(note);
+        page.addView(side, Ui.lp(Ui.dp(this, 360), MATCH, 0));
+        refreshMirror();
+        return page;
+    }
+
+    private void refreshMirror() {
+        if (mirrorBtn == null) {
+            return;
+        }
+        boolean on = MirrorService.running;
+        mirrorBtn.setText(on ? "Stop mirroring" : "Start mirroring");
+        mirrorBtn.setBackground(Ui.box(this, on ? Ui.TXT : Ui.OUT, 0, 14));
+        mirrorLevel.setProgress(MirrorService.level);
+        String err = MirrorService.error;
+        if (err != null) {
+            mirrorState.setText("Stopped: " + ascii(err));
+            mirrorState.setTextColor(Ui.OUT);
+        } else if (on) {
+            mirrorState.setText(MirrorService.heard > 0 ? "Mirroring to the outside speaker"
+                    : "Running, but no audio captured yet");
+            mirrorState.setTextColor(MirrorService.heard > 0 ? Ui.OK : Ui.DIM);
+        } else {
+            mirrorState.setText("Mirror is off");
+            mirrorState.setTextColor(Ui.DIM);
+        }
+    }
+
+    private void toggleMirror() {
+        try {
+            if (MirrorService.running) {
+                stopService(new Intent(this, MirrorService.class));
+                setStatus("Mirror stopped.");
+                return;
+            }
+            if (Build.VERSION.SDK_INT < 29) {
+                setStatus("Mirroring needs Android 10 or newer.");
+                return;
+            }
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+                setStatus("Allow audio access, then tap Start again.");
+                return;
+            }
+            if (audio.outer() == null) {
+                setStatus("Outside speaker not found on this car. Setup lists the audio outputs it does have.");
+                return;
+            }
+            android.media.projection.MediaProjectionManager mpm =
+                    (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+            if (mpm == null) {
+                setStatus("This head unit has no capture service, so mirroring is not possible.");
+                return;
+            }
+            MirrorService.error = null;
+            startActivityForResult(mpm.createScreenCaptureIntent(), REQ_PROJECTION);
+        } catch (Throwable t) {
+            setStatus("Could not start mirroring: " + t.getClass().getSimpleName() + " " + ascii(t.getMessage()));
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_PROJECTION) {
+            return;
+        }
+        if (resultCode != RESULT_OK || data == null) {
+            setStatus("Capture permission was not given, so mirroring did not start.");
+            return;
+        }
+        try {
+            stopMic();
+            playSeq++;
+            Player.stop();
+            Intent svc = new Intent(this, MirrorService.class);
+            svc.putExtra(MirrorService.EXTRA_CODE, resultCode);
+            svc.putExtra(MirrorService.EXTRA_DATA, data);
+            startForegroundService(svc);
+            setStatus("Mirror starting.");
+        } catch (Throwable t) {
+            setStatus("Could not start mirroring: " + t.getClass().getSimpleName() + " " + ascii(t.getMessage()));
+        }
+    }
+
+    // ---------------------------------------------------------------- whoopee
+
+    private int fartSide;
+    private int fartDelaySec;
+    private final java.util.Random random = new java.util.Random();
+
+    private View buildWhoopee() {
+        LinearLayout page = Ui.col(this);
+        int p = Ui.dp(this, 20);
+        page.setPadding(p, Ui.dp(this, 14), p, 0);
+
+        LinearLayout top = Ui.row(this);
+        top.addView(Ui.text(this, "From", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
+        final String[] sides = {"Left side", "Both sides", "Right side"};
+        for (int i = 0; i < sides.length; i++) {
+            final int side = i - 1;
+            boolean on = fartSide == side;
+            top.addView(Ui.button(this, sides[i], on ? Ui.CAB : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
+                fartSide = side;
+                showPage(P_WHOOPEE);
+            }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        }
+        View gap = new View(this);
+        top.addView(gap, Ui.lp(0, 1, 1f));
+        top.addView(Ui.text(this, "Delay", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
+        final int[] delays = {0, 5, 10, 30};
+        for (final int dsec : delays) {
+            boolean on = fartDelaySec == dsec;
+            top.addView(Ui.button(this, dsec == 0 ? "None" : dsec + " s", on ? Ui.TXT : Ui.SURF,
+                    on ? Ui.BG : Ui.DIM, () -> {
+                        fartDelaySec = dsec;
+                        showPage(P_WHOOPEE);
+                    }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        }
+        page.addView(top, Ui.lp(MATCH, WRAP, 0));
+
+        ScrollView sv = new ScrollView(this);
+        LinearLayout grid = Ui.col(this);
+        final int perRow = 3;
+        LinearLayout rowView = null;
+        for (int i = 0; i <= FARTS.length; i++) {
+            if (i % perRow == 0) {
+                rowView = new LinearLayout(this);
+                rowView.setOrientation(LinearLayout.HORIZONTAL);
+                grid.addView(rowView, Ui.lp(MATCH, WRAP, 0));
+            }
+            final int idx = i - 1;
+            TextView b = Ui.text(this, idx < 0 ? "Surprise me" : FARTS[idx][0], 19f,
+                    idx < 0 ? Ui.BG : Ui.TXT, true);
+            b.setGravity(Gravity.CENTER);
+            b.setBackground(Ui.box(this, idx < 0 ? Ui.OUT : Ui.SURF, idx < 0 ? 0 : Ui.LINE, 18));
+            b.setClickable(true);
+            b.setFocusable(true);
+            b.setOnClickListener(v -> queueFart(idx < 0 ? random.nextInt(FARTS.length) : idx));
+            rowView.addView(b, Ui.lp(this, 0, Ui.dp(this, 104), 1f, 6));
+        }
+        sv.addView(grid);
+        page.addView(sv, Ui.lp(MATCH, 0, 1f));
+        TextView note = Ui.text(this, "Always plays inside the cabin, whatever the Cabin / Outside switch says. "
+                + "Left and right use the car's stereo speakers.", 13f, Ui.DIM, false);
+        note.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), 0);
+        page.addView(note, Ui.lp(MATCH, WRAP, 0));
+        return page;
+    }
+
+    private void queueFart(final int idx) {
+        final int side = fartSide;
+        if (fartDelaySec <= 0) {
+            playFart(idx, side);
+            return;
+        }
+        setStatus("Armed. Going off in " + fartDelaySec + " seconds.");
+        h.postDelayed(() -> playFart(idx, side), fartDelaySec * 1000L);
+    }
+
+    private void playFart(int idx, int side) {
+        AudioDeviceInfo dev = audio.mediaBus();
+        if (dev == null) {
+            dev = audio.inner();
+        }
+        stopMic();
+        final int token = ++playSeq;
+        final String label = FARTS[idx][0];
+        setStatus(label + (side < 0 ? " from the left." : side > 0 ? " from the right." : " from both sides."));
+        Player.play(this, "farts/" + FARTS[idx][1], null, dev, AudioAttributes.USAGE_MEDIA, true, side,
+                (ok, msg) -> runOnUiThread(() -> {
+                    if (token == playSeq && !ok) {
+                        setStatus("Could not play " + label + ". " + ascii(msg));
+                    }
+                }));
     }
 
     // ------------------------------------------------------------------ setup

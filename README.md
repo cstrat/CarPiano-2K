@@ -12,7 +12,9 @@ An English rebuild of [jlunnn/CarPiano](https://github.com/jlunnn/CarPiano), a s
 | English home screen: Sounds, Live mic, Setup | In testing on a 7X |
 | Import your own MP3 / WAV files | In testing |
 | In-app update check and one-tap install | In testing |
-| Music streaming page, car controls, automations, piano | Not built yet |
+| Mirror: copy what the car is playing to the outside speaker | Experimental, in testing |
+| Whoopee: in-cabin prank sounds, left or right, with a delay | In testing |
+| Car controls, automations, piano | Not built yet |
 
 The original Cantonese screens have been removed from this fork. The audio routing and vehicle-interface code they relied on is kept.
 
@@ -28,6 +30,10 @@ Every push to `main` builds an APK and publishes it under [Releases](../../relea
 - **Play**: the piano, plus more instruments.
 - **Car**: Sentry mode and ambient lighting toggles, live signals, and simple "when this happens, do that" automations.
 - **Setup**: a read-only scan of audio buses, microphones and vehicle signals for diagnosing a new car or firmware.
+
+## Bundled sounds
+
+Every bundled sound is synthesised from scratch for this project (see the commit history), so there is nothing third-party in the APK. Clips from TV shows, films or sport broadcasts are not bundled; add your own files with **Add sounds** and file them under F1, Memes, TV and film or Useful.
 
 ## How it works
 
