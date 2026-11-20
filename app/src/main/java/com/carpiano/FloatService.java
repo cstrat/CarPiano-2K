@@ -26,9 +26,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Floating soundboard drawn over other apps. Collapsed it is a small round
- * button; tapped, it opens a panel with the user's groups and sounds. Both
- * can be dragged, and the position is remembered.
+ * Floating soundboard drawn over other apps, in three sizes: a small round
+ * button, a compact panel of favourite sounds, and the full board with every
+ * group. Dragging it off the left or right edge parks it as a thin tab.
  */
 public class FloatService extends Service {
 
@@ -45,7 +45,10 @@ public class FloatService extends Service {
     private LinearLayout shell;
     private SharedPreferences sp;
     private AudioOut audio;
-    private boolean expanded;
+    private static final int MINI = 0, FAVS = 1, FULL = 2;
+    private int mode = MINI;
+    private boolean docked;
+    private boolean dockLeft;
     private String group;
 
     @Override
@@ -75,11 +78,14 @@ public class FloatService extends Service {
             wm = (WindowManager) getSystemService(WINDOW_SERVICE);
             lp = new WindowManager.LayoutParams(WRAP, WRAP,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                     PixelFormat.TRANSLUCENT);
             lp.gravity = Gravity.TOP | Gravity.START;
             lp.x = sp.getInt("float_x", Ui.dp(this, 40));
             lp.y = sp.getInt("float_y", Ui.dp(this, 160));
+            docked = sp.getBoolean("float_docked", false);
+            dockLeft = sp.getBoolean("float_dock_left", true);
             shell = new LinearLayout(this);
             render();
             wm.addView(shell, lp);
@@ -110,9 +116,26 @@ public class FloatService extends Service {
 
     // ------------------------------------------------------------------ views
 
+    private int screenW() {
+        return getResources().getDisplayMetrics().widthPixels;
+    }
+
     private void render() {
         shell.removeAllViews();
-        shell.addView(expanded ? panel() : bubble());
+        if (docked) {
+            shell.addView(tab());
+        } else if (mode == FULL) {
+            shell.addView(panel());
+        } else if (mode == FAVS) {
+            shell.addView(favourites());
+        } else {
+            shell.addView(bubble());
+        }
+    }
+
+    private void setMode(int m) {
+        mode = m;
+        render();
     }
 
     private View bubble() {
@@ -120,11 +143,128 @@ public class FloatService extends Service {
         b.setImageResource(R.mipmap.ic_launcher_round);
         int s = Ui.dp(this, 68);
         b.setLayoutParams(new LinearLayout.LayoutParams(s, s));
-        b.setOnTouchListener(new Drag(() -> {
-            expanded = true;
-            render();
-        }));
+        b.setOnTouchListener(new Drag(() -> setMode(FAVS)));
         return b;
+    }
+
+    /** Thin tab left at the screen edge after the widget is dragged off it. */
+    private View tab() {
+        View t = new View(this);
+        t.setBackground(Ui.box(this, Ui.OUT, 0, 10));
+        t.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, 22), Ui.dp(this, 110)));
+        t.setOnTouchListener((v, e) -> {
+            if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+                undock();
+            }
+            return true;
+        });
+        return t;
+    }
+
+    private void dock(boolean left) {
+        docked = true;
+        dockLeft = left;
+        mode = MINI;
+        lp.x = left ? 0 : screenW() - Ui.dp(this, 22);
+        lp.y = Math.max(0, lp.y);
+        sp.edit().putBoolean("float_docked", true).putBoolean("float_dock_left", left)
+                .putInt("float_x", lp.x).putInt("float_y", lp.y).apply();
+        render();
+        try {
+            wm.updateViewLayout(shell, lp);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void undock() {
+        docked = false;
+        mode = MINI;
+        lp.x = dockLeft ? Ui.dp(this, 12) : screenW() - Ui.dp(this, 80);
+        sp.edit().putBoolean("float_docked", false).putInt("float_x", lp.x).apply();
+        render();
+        try {
+            wm.updateViewLayout(shell, lp);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private LinearLayout header(String titleText, Runnable onTitleTap) {
+        LinearLayout head = Ui.row(this);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.mipmap.ic_launcher_round);
+        icon.setOnTouchListener(new Drag(onTitleTap));
+        head.addView(icon, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 44), 0));
+        TextView handle = Ui.text(this, titleText, 16f, Ui.TXT, true);
+        handle.setPadding(Ui.dp(this, 8), Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10));
+        handle.setOnTouchListener(new Drag(onTitleTap));
+        head.addView(handle, Ui.lp(0, WRAP, 1f));
+        final boolean outside = Prefs.outer(this);
+        head.addView(small(outside ? "Outside" : "Cabin", outside ? Ui.OUT : Ui.CAB, Ui.BG, () -> {
+            Prefs.setChan(this, outside ? 0 : 3);
+            render();
+        }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        head.addView(small("Stop", Ui.TXT, Ui.BG, Player::stop), Ui.lp(this, WRAP, WRAP, 0, 3));
+        return head;
+    }
+
+    private TextView soundTile(final File f, boolean highlight) {
+        TextView t = Ui.text(this, Library.label(f), 15f, highlight ? Ui.OUT : Ui.TXT, true);
+        t.setGravity(Gravity.CENTER);
+        t.setMaxLines(2);
+        t.setBackground(Ui.box(this, Ui.RAISE, 0, 14));
+        t.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
+        t.setClickable(true);
+        t.setOnClickListener(v -> play(f));
+        return t;
+    }
+
+    private void addGrid(LinearLayout parent, List<TextView> tiles, int perRow, int maxRows) {
+        ScrollView sv = new ScrollView(this);
+        LinearLayout grid = Ui.col(this);
+        LinearLayout row = null;
+        for (int n = 0; n < tiles.size(); n++) {
+            if (n % perRow == 0) {
+                row = new LinearLayout(this);
+                grid.addView(row, Ui.lp(MATCH, WRAP, 0));
+            }
+            row.addView(tiles.get(n), Ui.lp(this, 0, Ui.dp(this, 64), 1f, 3));
+        }
+        if (row != null) {
+            for (int i = tiles.size() % perRow; i != 0 && i < perRow; i++) {
+                row.addView(new View(this), Ui.lp(this, 0, Ui.dp(this, 64), 1f, 3));
+            }
+        }
+        sv.addView(grid);
+        int rows = (tiles.size() + perRow - 1) / perRow;
+        parent.addView(sv, Ui.lp(MATCH, Ui.dp(this, Math.min(rows, maxRows) * 70), 0));
+    }
+
+    /** Middle size: favourite sounds only. Tapping the icon or title opens the full board. */
+    private View favourites() {
+        LinearLayout p = Ui.col(this);
+        p.setBackground(Ui.box(this, Ui.SURF, Ui.LINE, 20));
+        int pad = Ui.dp(this, 10);
+        p.setPadding(pad, pad, pad, pad);
+        p.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, 400), WRAP));
+        LinearLayout head = header("Favourites", () -> setMode(FULL));
+        head.addView(small("All", Ui.RAISE, Ui.TXT, () -> setMode(FULL)), Ui.lp(this, WRAP, WRAP, 0, 3));
+        head.addView(small("Hide", Ui.RAISE, Ui.TXT, () -> setMode(MINI)), Ui.lp(this, WRAP, WRAP, 0, 3));
+        p.addView(head, Ui.lp(MATCH, WRAP, 0));
+        List<TextView> tiles = new ArrayList<>();
+        for (File f : Library.userSounds(this)) {
+            if (Library.isFav(this, f) && !"Whoopee".equals(Library.groupOf(this, f))) {
+                tiles.add(soundTile(f, false));
+            }
+        }
+        if (tiles.isEmpty()) {
+            TextView none = Ui.text(this, "No favourites yet. Tap All, then long-press a sound to make it a "
+                    + "favourite.", 15f, Ui.DIM, false);
+            none.setPadding(Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12));
+            p.addView(none);
+        } else {
+            addGrid(p, tiles, 3, 2);
+        }
+        return p;
     }
 
     private View panel() {
@@ -134,21 +274,9 @@ public class FloatService extends Service {
         p.setPadding(pad, pad, pad, pad);
         p.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, 460), WRAP));
 
-        LinearLayout head = Ui.row(this);
-        TextView handle = Ui.text(this, "CarTalk", 17f, Ui.TXT, true);
-        handle.setPadding(Ui.dp(this, 8), Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 10));
-        handle.setOnTouchListener(new Drag(null));
-        head.addView(handle, Ui.lp(0, WRAP, 1f));
-        final boolean outside = Prefs.outer(this);
-        head.addView(small(outside ? "Outside" : "Cabin", outside ? Ui.OUT : Ui.CAB, Ui.BG, () -> {
-            Prefs.setChan(this, outside ? 0 : 3);
-            render();
-        }), Ui.lp(this, WRAP, WRAP, 0, 3));
-        head.addView(small("Stop", Ui.TXT, Ui.BG, Player::stop), Ui.lp(this, WRAP, WRAP, 0, 3));
-        head.addView(small("Hide", Ui.RAISE, Ui.TXT, () -> {
-            expanded = false;
-            render();
-        }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        LinearLayout head = header("CarTalk", () -> setMode(FAVS));
+        head.addView(small("Favs", Ui.RAISE, Ui.TXT, () -> setMode(FAVS)), Ui.lp(this, WRAP, WRAP, 0, 3));
+        head.addView(small("Hide", Ui.RAISE, Ui.TXT, () -> setMode(MINI)), Ui.lp(this, WRAP, WRAP, 0, 3));
         p.addView(head, Ui.lp(MATCH, WRAP, 0));
 
         final List<String> groups = new ArrayList<>();
@@ -186,37 +314,25 @@ public class FloatService extends Service {
         hs.addView(chips);
         p.addView(hs, Ui.lp(MATCH, WRAP, 0));
 
-        ScrollView sv = new ScrollView(this);
-        LinearLayout grid = Ui.col(this);
-        final int perRow = 3;
-        LinearLayout row = null;
-        int n = 0;
-        for (final File f : all) {
-            if (!group.equals(Library.groupOf(this, f))) {
+        List<TextView> tiles = new ArrayList<>();
+        for (final File s : all) {
+            if (!group.equals(Library.groupOf(this, s))) {
                 continue;
             }
-            if (n % perRow == 0) {
-                row = new LinearLayout(this);
-                grid.addView(row, Ui.lp(MATCH, WRAP, 0));
-            }
-            TextView t = Ui.text(this, Library.label(f), 15f, Ui.TXT, true);
-            t.setGravity(Gravity.CENTER);
-            t.setMaxLines(2);
-            t.setBackground(Ui.box(this, Ui.RAISE, 0, 14));
-            t.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
-            t.setClickable(true);
-            t.setOnClickListener(v -> play(f));
-            row.addView(t, Ui.lp(this, 0, Ui.dp(this, 64), 1f, 3));
-            n++;
+            final boolean fav = Library.isFav(this, s);
+            TextView t = soundTile(s, fav);
+            t.setOnLongClickListener(v -> {
+                Library.setFav(this, s, !fav);
+                render();
+                return true;
+            });
+            tiles.add(t);
         }
-        if (row != null) {
-            for (int i = n % perRow; i != 0 && i < perRow; i++) {
-                row.addView(new View(this), Ui.lp(this, 0, Ui.dp(this, 64), 1f, 3));
-            }
-        }
-        sv.addView(grid);
-        int rows = (n + perRow - 1) / perRow;
-        p.addView(sv, Ui.lp(MATCH, Ui.dp(this, Math.min(rows, 3) * 70), 0));
+        addGrid(p, tiles, 3, 3);
+        TextView hint = Ui.text(this, "Long-press a sound to add or remove it from favourites (shown in orange).",
+                12f, Ui.DIM, false);
+        hint.setPadding(Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8), 0);
+        p.addView(hint);
         return p;
     }
 
@@ -276,7 +392,7 @@ public class FloatService extends Service {
                         moved = true;
                     }
                     if (moved) {
-                        lp.x = Math.max(0, startX + (int) dx);
+                        lp.x = startX + (int) dx;
                         lp.y = Math.max(0, startY + (int) dy);
                         try {
                             wm.updateViewLayout(shell, lp);
@@ -287,7 +403,19 @@ public class FloatService extends Service {
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     if (moved) {
-                        sp.edit().putInt("float_x", lp.x).putInt("float_y", lp.y).apply();
+                        int w = Math.max(1, shell.getWidth());
+                        if (lp.x < -w / 4) {
+                            dock(true);
+                        } else if (lp.x + w > screenW() + w / 4) {
+                            dock(false);
+                        } else {
+                            lp.x = Math.max(0, Math.min(lp.x, Math.max(0, screenW() - w)));
+                            try {
+                                wm.updateViewLayout(shell, lp);
+                            } catch (Throwable ignored) {
+                            }
+                            sp.edit().putInt("float_x", lp.x).putInt("float_y", lp.y).apply();
+                        }
                     } else if (onTap != null && e.getActionMasked() == MotionEvent.ACTION_UP) {
                         onTap.run();
                     }

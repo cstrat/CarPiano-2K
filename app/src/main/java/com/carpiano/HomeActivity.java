@@ -392,17 +392,21 @@ public class HomeActivity extends Activity {
         TextView name = Ui.text(this, s.label, 18f, Ui.TXT, true);
         name.setSingleLine(true);
         t.addView(name);
-        t.addView(Ui.text(this, s.category, 13f, Ui.DIM, false));
+        boolean starred = s.file != null && Library.isFav(this, s.file);
+        t.addView(Ui.text(this, starred ? s.category + "  \u00b7  favourite" : s.category, 13f,
+                starred ? Ui.OUT : Ui.DIM, false));
         t.setOnClickListener(v -> play(s));
         if (s.file != null) {
             t.setOnLongClickListener(v -> {
                 final List<String> groups = userGroups();
-                final String[] items = new String[groups.size() + 2];
+                final boolean fav = Library.isFav(this, s.file);
+                final String[] items = new String[groups.size() + 3];
                 for (int k = 0; k < groups.size(); k++) {
                     items[k] = "Move to " + groups.get(k);
                 }
                 items[groups.size()] = "Move to a new group...";
-                items[groups.size() + 1] = "Remove from the app";
+                items[groups.size() + 1] = fav ? "Remove from favourites" : "Add to favourites";
+                items[groups.size() + 2] = "Remove from the app";
                 new android.app.AlertDialog.Builder(this)
                         .setTitle(s.label)
                         .setItems(items, (d, which) -> {
@@ -410,6 +414,11 @@ public class HomeActivity extends Activity {
                                 moveSound(s, groups.get(which));
                             } else if (which == groups.size()) {
                                 promptNewGroup(created -> moveSound(s, created));
+                            } else if (which == groups.size() + 1) {
+                                Library.setFav(this, s.file, !fav);
+                                setStatus(fav ? "Removed " + s.label + " from favourites."
+                                        : "Added " + s.label + " to favourites.");
+                                showPage(P_SOUNDS);
                             } else {
                                 playSeq++;
                                 Player.stop();

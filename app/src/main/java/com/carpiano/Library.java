@@ -57,6 +57,20 @@ final class Library {
         return c.getSharedPreferences("groups", Context.MODE_PRIVATE).getString(f.getName(), "My sounds");
     }
 
+    static boolean isFav(Context c, File f) {
+        return c.getSharedPreferences("favs", Context.MODE_PRIVATE).getBoolean(f.getName(), false);
+    }
+
+    static void setFav(Context c, File f, boolean on) {
+        android.content.SharedPreferences.Editor e = c.getSharedPreferences("favs", Context.MODE_PRIVATE).edit();
+        if (on) {
+            e.putBoolean(f.getName(), true);
+        } else {
+            e.remove(f.getName());
+        }
+        e.apply();
+    }
+
     static boolean isZip(String name) {
         return name.toLowerCase(Locale.US).endsWith(".zip");
     }
