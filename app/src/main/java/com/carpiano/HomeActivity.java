@@ -1023,9 +1023,8 @@ public class HomeActivity extends Activity {
         }
         sv.addView(grid);
         page.addView(sv, Ui.lp(MATCH, 0, 1f));
-        TextView note = Ui.text(this, "Always plays inside the cabin. Seat placement is a first guess at which "
-                + "speaker channel serves which seat. If a seat is wrong or silent, use Speaker test in Setup "
-                + "and report what you hear.", 13f, Ui.DIM, false);
+        TextView note = Ui.text(this, "Always plays inside the cabin. Each seat uses one channel of a surround "
+                + "stream on the main cabin speakers; how well it separates depends on the car's amplifier.", 13f, Ui.DIM, false);
         note.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), 0);
         page.addView(note, Ui.lp(MATCH, WRAP, 0));
 
@@ -1088,45 +1087,30 @@ public class HomeActivity extends Activity {
     }
 
     /**
-     * Seat to speaker channel, as a first guess from the bus names on a right-hand-drive 7X:
-     * the media bus panned right for the driver, the front passenger bus, and the rear seat
-     * bus panned left or right.
+     * Every seat goes through the main cabin channel, the only one confirmed to make sound
+     * for this. Seats are separated by sending the sound on a single channel of a 5.1
+     * stream (right-hand drive: driver is front right).
      */
     private void playFart(final Sound s, int seat) {
-        AudioDeviceInfo media = audio.mediaBus();
-        if (media == null) {
-            media = audio.inner();
-        }
-        AudioDeviceInfo dev = media;
-        float pan = 0f;
-        if (seat == 1) {
-            pan = 1f;
-        } else if (seat == 2) {
-            dev = audio.byAddr("BUS08_FRONT_PASSENGER");
-            if (dev == null) {
-                dev = media;
-                pan = -1f;
-            }
-        } else if (seat == 3 || seat == 4) {
-            dev = audio.byAddr("BUS16_REAR_SEAT");
-            if (dev == null) {
-                dev = audio.byAddr("BUS20_REAR_MEDIA");
-            }
-            if (dev == null) {
-                dev = media;
-            }
-            pan = seat == 3 ? -1f : 1f;
+        AudioDeviceInfo dev = audio.mediaBus();
+        if (dev == null) {
+            dev = audio.inner();
         }
         stopMic();
         final int token = ++playSeq;
-        String route = dev == null || dev.getAddress() == null ? "default output" : dev.getAddress();
-        setStatus(s.label + ": " + SEATS[seat] + " (" + route + ").");
-        Player.play(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, true, pan,
-                (ok, msg) -> runOnUiThread(() -> {
-                    if (token == playSeq && !ok) {
-                        setStatus("Could not play " + s.label + ". " + ascii(msg));
-                    }
-                }));
+        setStatus(s.label + ": " + SEATS[seat] + ".");
+        Player.Cb cb = (ok, msg) -> runOnUiThread(() -> {
+            if (token == playSeq && !ok) {
+                setStatus("Could not play " + s.label + ". " + ascii(msg));
+            }
+        });
+        if (seat == 0) {
+            Player.play(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, true, 0f, cb);
+        } else {
+            int channel = seat == 1 ? Player.FRONT_RIGHT : seat == 2 ? Player.FRONT_LEFT
+                    : seat == 3 ? Player.BACK_LEFT : Player.BACK_RIGHT;
+            Player.playAtSeat(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, channel, cb);
+        }
     }
 
     // ------------------------------------------------------------------ setup
@@ -1172,6 +1156,37 @@ public class HomeActivity extends Activity {
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         scan.addView(sb);
         page.addView(scan, Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        LinearLayout fw = Ui.card(this);
+        fw.addView(Ui.text(this, "Floating widget", 20f, Ui.TXT, true));
+        fw.addView(Ui.text(this, "Stays on top of other apps. Resize it with a two-finger pinch on the panel, "
+                + "or the Smaller and Bigger buttons in its full view.", 15f, Ui.DIM, false));
+        LinearLayout fb = Ui.row(this);
+        fb.addView(Ui.button(this, FloatService.running ? "Hide widget" : "Show widget", Ui.RAISE, Ui.TXT, () -> {
+            toggleFloat();
+            h.postDelayed(() -> {
+                if (page == P_SETUP) {
+                    showPage(P_SETUP);
+                }
+            }, 900);
+        }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        final boolean ptt = sp.getBoolean("float_ptt", false);
+        fb.addView(Ui.button(this, ptt ? "Push to talk in widget: on" : "Push to talk in widget: off",
+                ptt ? Ui.OUT : Ui.RAISE, ptt ? Ui.BG : Ui.TXT, () -> {
+                    sp.edit().putBoolean("float_ptt", !ptt).apply();
+                    if (!ptt && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+                    }
+                    if (FloatService.running) {
+                        stopService(new Intent(this, FloatService.class));
+                        h.postDelayed(this::startFloat, 500);
+                    }
+                    setStatus(ptt ? "Push to talk removed from the widget." : "Push to talk added to the widget.");
+                    showPage(P_SETUP);
+                }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        fw.addView(fb);
+        page.addView(fw, Ui.lp(this, MATCH, WRAP, 0, 6));
 
         LinearLayout test = Ui.card(this);
         test.addView(Ui.text(this, "Speaker test", 20f, Ui.TXT, true));
@@ -1243,6 +1258,7 @@ public class HomeActivity extends Activity {
             for (AudioDeviceInfo d : audio.outputs()) {
                 b.append("  type ").append(d.getType()).append("  ")
                         .append(d.getAddress() == null || d.getAddress().isEmpty() ? "(no address)" : d.getAddress())
+                        .append("  channels ").append(java.util.Arrays.toString(d.getChannelCounts()))
                         .append('\n');
             }
             b.append("\nMicrophones and inputs:\n");
