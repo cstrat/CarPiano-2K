@@ -900,7 +900,7 @@ public class HomeActivity extends Activity {
 
     // ---------------------------------------------------------------- whoopee
 
-    private static final String[] SEATS = {"Everywhere", "Driver", "Front passenger", "Rear left", "Rear right"};
+    private static final String[] SEATS = {"Whole cabin", "Driver", "Front passenger", "Rear left", "Rear right"};
     private int fartSeat;
     private int fartDelaySec;
     private final java.util.Random random = new java.util.Random();
@@ -909,18 +909,6 @@ public class HomeActivity extends Activity {
         LinearLayout page = Ui.col(this);
         int p = Ui.dp(this, 20);
         page.setPadding(p, Ui.dp(this, 14), p, 0);
-
-        LinearLayout seatRow = Ui.row(this);
-        seatRow.addView(Ui.text(this, "Seat", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 56), WRAP, 0, 6));
-        for (int i = 0; i < SEATS.length; i++) {
-            final int seat = i;
-            boolean on = fartSeat == seat;
-            seatRow.addView(Ui.button(this, SEATS[i], on ? Ui.CAB : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
-                fartSeat = seat;
-                showPage(P_WHOOPEE);
-            }), Ui.lp(this, WRAP, WRAP, 0, 4));
-        }
-        page.addView(seatRow, Ui.lp(MATCH, WRAP, 0));
 
         LinearLayout delayRow = Ui.row(this);
         delayRow.addView(Ui.text(this, "Delay", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 56), WRAP, 0, 6));
@@ -978,7 +966,53 @@ public class HomeActivity extends Activity {
                 + "and report what you hear.", 13f, Ui.DIM, false);
         note.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), 0);
         page.addView(note, Ui.lp(MATCH, WRAP, 0));
-        return page;
+
+        // Seat picker drawn as the car from above, nose at the top. Right-hand drive.
+        LinearLayout left = Ui.col(this);
+        left.setPadding(Ui.dp(this, 20), Ui.dp(this, 14), 0, Ui.dp(this, 10));
+        LinearLayout car = Ui.col(this);
+        car.setBackground(new CarDrawable(this));
+        int cp = Ui.dp(this, 44);
+        car.setPadding(cp, 0, cp, 0);
+        TextView front = Ui.text(this, "FRONT", 12f, Ui.DIM, true);
+        front.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+        front.setPadding(0, 0, 0, Ui.dp(this, 4));
+        car.addView(front, Ui.lp(MATCH, 0, 0.31f));
+        LinearLayout frontRow = new LinearLayout(this);
+        frontRow.addView(seatButton("Front\npassenger", 2), Ui.lp(this, 0, MATCH, 1f, 5));
+        frontRow.addView(seatButton("Driver", 1), Ui.lp(this, 0, MATCH, 1f, 5));
+        car.addView(frontRow, Ui.lp(MATCH, 0, 0.24f));
+        LinearLayout rearRow = new LinearLayout(this);
+        rearRow.addView(seatButton("Rear\nleft", 3), Ui.lp(this, 0, MATCH, 1f, 5));
+        rearRow.addView(seatButton("Rear\nright", 4), Ui.lp(this, 0, MATCH, 1f, 5));
+        car.addView(rearRow, Ui.lp(MATCH, 0, 0.24f));
+        car.addView(new View(this), Ui.lp(MATCH, 0, 0.21f));
+        left.addView(car, Ui.lp(MATCH, 0, 1f));
+        boolean all = fartSeat == 0;
+        left.addView(Ui.button(this, "Whole cabin", all ? Ui.CAB : Ui.SURF, all ? Ui.BG : Ui.DIM, () -> {
+            fartSeat = 0;
+            showPage(P_WHOOPEE);
+        }), Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.HORIZONTAL);
+        outer.addView(left, Ui.lp(Ui.dp(this, 300), MATCH, 0));
+        outer.addView(page, Ui.lp(0, MATCH, 1f));
+        return outer;
+    }
+
+    private TextView seatButton(String label, final int seat) {
+        boolean on = fartSeat == seat;
+        TextView b = Ui.text(this, label, 15f, on ? Ui.BG : Ui.TXT, true);
+        b.setGravity(Gravity.CENTER);
+        b.setBackground(Ui.box(this, on ? Ui.CAB : Ui.RAISE, on ? 0 : Ui.LINE, 16));
+        b.setClickable(true);
+        b.setFocusable(true);
+        b.setOnClickListener(v -> {
+            fartSeat = seat;
+            showPage(P_WHOOPEE);
+        });
+        return b;
     }
 
     private void queueFart(final Sound s) {
