@@ -257,6 +257,7 @@ public class HomeActivity extends Activity {
             stopMic();
         }
         page = idx;
+        closeBrowser();
         for (int i = 0; i < navButtons.size(); i++) {
             boolean on = i == idx;
             navButtons.get(i).setBackground(on ? Ui.box(this, Ui.RAISE, 0, 16) : null);
@@ -339,6 +340,8 @@ public class HomeActivity extends Activity {
         top.addView(hs, Ui.lp(0, WRAP, 1f));
         top.addView(Ui.button(this, FloatService.running ? "Unfloat" : "Float", Ui.RAISE, Ui.TXT,
                 this::toggleFloat), Ui.lp(this, WRAP, WRAP, 0, 4));
+        top.addView(Ui.button(this, "Browse web", Ui.RAISE, Ui.TXT, this::showBrowser),
+                Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Add sounds", Ui.RAISE, Ui.TXT, this::showImport),
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Stop", Ui.TXT, Ui.BG, () -> {
@@ -516,6 +519,264 @@ public class HomeActivity extends Activity {
                 showPage(P_SOUNDS);
             }
         }, 600);
+    }
+
+    // ---------------------------------------------------------------- browser
+
+    private android.webkit.WebView web;
+
+    private void closeBrowser() {
+        if (web != null) {
+            try {
+                web.stopLoading();
+                web.destroy();
+            } catch (Throwable ignored) {
+            }
+            web = null;
+        }
+    }
+
+    /** A small browser. Any audio file it is asked to download is saved into the chosen group. */
+    private void showBrowser() {
+        closeBrowser();
+        title.setText("Browse web");
+        host.removeAllViews();
+        LinearLayout pg = Ui.col(this);
+        int p = Ui.dp(this, 14);
+        pg.setPadding(p, Ui.dp(this, 10), p, 0);
+
+        final android.widget.EditText address = new android.widget.EditText(this);
+        address.setSingleLine(true);
+        address.setHint("Web address or search words");
+        address.setTextColor(Ui.TXT);
+        address.setHintTextColor(Ui.DIM);
+        address.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        address.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
+        address.setText(sp.getString("browser_url", ""));
+
+        try {
+            web = new android.webkit.WebView(this);
+        } catch (Throwable t) {
+            web = null;
+            TextView none = Ui.text(this, "This head unit has no built-in web view, so the in-app browser "
+                    + "cannot run here. Keep using the car's browser and Add sounds. ("
+                    + t.getClass().getSimpleName() + ")", 16f, Ui.DIM, false);
+            none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
+            pg.addView(none);
+            pg.addView(Ui.button(this, "Back to Sounds", Ui.RAISE, Ui.TXT, () -> showPage(P_SOUNDS)),
+                    Ui.lp(this, WRAP, WRAP, 0, 8));
+            host.addView(pg, new FrameLayout.LayoutParams(MATCH, MATCH));
+            return;
+        }
+        final android.webkit.WebView w = web;
+        w.getSettings().setJavaScriptEnabled(true);
+        w.getSettings().setDomStorageEnabled(true);
+        w.getSettings().setMediaPlaybackRequiresUserGesture(true);
+        final Runnable go = () -> {
+            String t = address.getText().toString().trim();
+            if (t.isEmpty()) {
+                return;
+            }
+            String url;
+            if (t.startsWith("http://") || t.startsWith("https://")) {
+                url = t;
+            } else if (t.contains(".") && !t.contains(" ")) {
+                url = "https://" + t;
+            } else {
+                url = "https://duckduckgo.com/?q=" + android.net.Uri.encode(t);
+            }
+            w.loadUrl(url);
+        };
+        address.setOnEditorActionListener((v, actionId, event) -> {
+            go.run();
+            return true;
+        });
+        w.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(android.webkit.WebView view,
+                                                    android.webkit.WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                String path = request.getUrl().getPath();
+                if (path != null && Library.isAudio(path)) {
+                    captureAudio(url, null, null);
+                    return true;
+                }
+                return !(url.startsWith("http://") || url.startsWith("https://"));
+            }
+
+            @Override
+            public void onPageFinished(android.webkit.WebView view, String url) {
+                if (url != null && url.startsWith("http")) {
+                    address.setText(url);
+                    sp.edit().putString("browser_url", url).apply();
+                }
+            }
+        });
+        w.setDownloadListener((url, userAgent, contentDisposition, mime, length) ->
+                captureAudio(url, contentDisposition, mime));
+
+        LinearLayout bar = Ui.row(this);
+        bar.addView(Ui.button(this, "Back", Ui.RAISE, Ui.TXT, () -> {
+            if (w.canGoBack()) {
+                w.goBack();
+            }
+        }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        bar.addView(address, Ui.lp(0, WRAP, 1f));
+        bar.addView(Ui.button(this, "Go", Ui.OK, Ui.BG, go), Ui.lp(this, WRAP, WRAP, 0, 3));
+        bar.addView(Ui.button(this, "Done", Ui.TXT, Ui.BG, () -> {
+            category = "Whoopee".equals(importGroup) ? "All" : importGroup;
+            showPage("Whoopee".equals(importGroup) ? P_WHOOPEE : P_SOUNDS);
+        }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        pg.addView(bar, Ui.lp(MATCH, WRAP, 0));
+
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        final LinearLayout chips = Ui.row(this);
+        hs.addView(chips);
+        pg.addView(hs, Ui.lp(MATCH, WRAP, 0));
+        fillBrowserChips(chips);
+
+        pg.addView(w, Ui.lp(MATCH, 0, 1f));
+        host.addView(pg, new FrameLayout.LayoutParams(MATCH, MATCH));
+        setStatus("Tap a download link for an audio file and it is saved into the selected group.");
+        if (!address.getText().toString().trim().isEmpty()) {
+            go.run();
+        }
+    }
+
+    /** Group chips for the browser; rebuilt in place so the page being viewed is not reloaded. */
+    private void fillBrowserChips(final LinearLayout chips) {
+        chips.removeAllViews();
+        chips.addView(Ui.text(this, "Save into", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
+        for (final String g : userGroups()) {
+            boolean on = g.equals(importGroup);
+            chips.addView(Ui.button(this, g, on ? Ui.TXT : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
+                importGroup = g;
+                fillBrowserChips(chips);
+            }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        }
+        chips.addView(Ui.button(this, "+ New group", Ui.RAISE, Ui.TXT, () -> promptNewGroup(created -> {
+            importGroup = created;
+            fillBrowserChips(chips);
+        })), Ui.lp(this, WRAP, WRAP, 0, 3));
+    }
+
+    /** Downloads an audio file the browser was asked for, then lets the user name it. */
+    private void captureAudio(final String url, final String disposition, final String mime) {
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            setStatus("That download is generated inside the page and cannot be captured. "
+                    + "Look for a direct download link instead.");
+            return;
+        }
+        final String group = importGroup;
+        final String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+        final String agent = web != null ? web.getSettings().getUserAgentString() : "CarTalk";
+        setStatus("Downloading...");
+        new Thread(() -> {
+            java.net.HttpURLConnection con = null;
+            File tmp = null;
+            String err = null;
+            String name = null;
+            try {
+                con = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                con.setConnectTimeout(10000);
+                con.setReadTimeout(30000);
+                con.setInstanceFollowRedirects(true);
+                con.setRequestProperty("User-Agent", agent);
+                if (cookies != null) {
+                    con.setRequestProperty("Cookie", cookies);
+                }
+                int code = con.getResponseCode();
+                if (code != 200) {
+                    throw new IllegalStateException("the site answered " + code);
+                }
+                String type = mime != null && !mime.isEmpty() ? mime : con.getContentType();
+                String disp = disposition != null ? disposition : con.getHeaderField("Content-Disposition");
+                name = android.webkit.URLUtil.guessFileName(con.getURL().toString(), disp, type);
+                if (!Library.isAudio(name)) {
+                    if (type != null && type.startsWith("audio/")) {
+                        int dot = name.lastIndexOf('.');
+                        name = (dot > 0 ? name.substring(0, dot) : name) + ".mp3";
+                    } else {
+                        throw new IllegalStateException("that link is not an audio file");
+                    }
+                }
+                tmp = new File(getCacheDir(), "browser-download.tmp");
+                try (java.io.InputStream in = con.getInputStream();
+                     java.io.FileOutputStream os = new java.io.FileOutputStream(tmp)) {
+                    byte[] buf = new byte[32768];
+                    int n;
+                    long total = 0;
+                    while ((n = in.read(buf)) > 0) {
+                        os.write(buf, 0, n);
+                        total += n;
+                        if (total > 40L * 1024 * 1024) {
+                            throw new IllegalStateException("file is larger than 40 MB");
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                err = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+            } finally {
+                if (con != null) {
+                    con.disconnect();
+                }
+            }
+            final String e = err;
+            final File got = tmp;
+            final String fileName = name;
+            runOnUiThread(() -> {
+                if (e != null || got == null || fileName == null) {
+                    setStatus("Could not save that sound: " + ascii(e) + ".");
+                    return;
+                }
+                nameAndKeep(got, fileName, group);
+            });
+        }, "browser-download").start();
+    }
+
+    private void nameAndKeep(final File tmp, String fileName, final String group) {
+        int dot = fileName.lastIndexOf('.');
+        final String ext = dot > 0 ? fileName.substring(dot).toLowerCase() : ".mp3";
+        String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+        final android.widget.EditText in = new android.widget.EditText(this);
+        in.setSingleLine(true);
+        in.setText(base.replace('_', ' ').replace('-', ' ').trim());
+        in.setSelectAllOnFocus(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Name this sound (saving into " + group + ")")
+                .setView(in)
+                .setCancelable(false)
+                .setPositiveButton("Save", (d, wch) -> {
+                    String label = in.getText().toString().replaceAll("[\\\\/:*?\"<>|\\n]", " ").trim();
+                    if (label.isEmpty()) {
+                        label = "Sound";
+                    }
+                    File dst = new File(Library.dir(this), label + ext);
+                    for (int k = 2; dst.exists(); k++) {
+                        dst = new File(Library.dir(this), label + " " + k + ext);
+                    }
+                    try {
+                        try (java.io.InputStream is = new java.io.FileInputStream(tmp);
+                             java.io.OutputStream os = new java.io.FileOutputStream(dst)) {
+                            byte[] buf = new byte[65536];
+                            int n;
+                            while ((n = is.read(buf)) > 0) {
+                                os.write(buf, 0, n);
+                            }
+                        }
+                        getSharedPreferences("groups", MODE_PRIVATE).edit().putString(dst.getName(), group).apply();
+                        setStatus("Saved " + Library.label(dst) + " into " + group + ".");
+                    } catch (Throwable t) {
+                        setStatus("Could not save that sound: " + t.getClass().getSimpleName() + ".");
+                    }
+                    tmp.delete();
+                })
+                .setNegativeButton("Discard", (d, wch) -> {
+                    tmp.delete();
+                    setStatus("Discarded.");
+                })
+                .show();
     }
 
     // ----------------------------------------------------------------- groups

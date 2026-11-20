@@ -12,7 +12,8 @@ CarTalk (repo name CarPiano-2K) is an English rebuild of [jlunnn/CarPiano](https
 | English home screen: Sounds, Live mic, Setup | In testing on a 7X |
 | Import your own MP3 / WAV files | In testing |
 | In-app update check and one-tap install | In testing (fixed stale download in build 13) |
-| Floating soundboard over other apps | In testing |
+| Floating soundboard over other apps | Working on a 7X |
+| Built-in browser that saves audio downloads straight into a group | In testing |
 | Whoopee: in-cabin prank sounds, left or right, with a delay | In testing |
 | Car controls, automations, piano | Not built yet |
 
