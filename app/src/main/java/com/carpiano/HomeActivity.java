@@ -627,8 +627,8 @@ public class HomeActivity extends Activity {
         final List<TextView> names = new ArrayList<>();
 
         LinearLayout top = Ui.row(this);
-        TextView help = Ui.text(this, "Audio files in Downloads, Music and on USB. Pick a group, then tap "
-                + "a file or Add all. Long-press a group you created to delete it.", 15f, Ui.DIM, false);
+        TextView help = Ui.text(this, "Audio files and zips in Downloads, Music and on USB. Pick a group, then "
+                + "tap a file or Add all. A zip's folders become groups. Long-press your own group to delete it.", 15f, Ui.DIM, false);
         top.addView(help, Ui.lp(0, WRAP, 1f));
         top.addView(Ui.button(this, "Add all", Ui.OK, Ui.BG, () -> {
             for (int i = 0; i < found.size(); i++) {
@@ -694,22 +694,86 @@ public class HomeActivity extends Activity {
                     r.setPadding(rp, rp, rp, rp);
                     r.setClickable(true);
                     r.setFocusable(true);
-                    boolean have = new File(Library.dir(this), f.getName()).isFile();
-                    final TextView name = Ui.text(this, have ? f.getName() + "  (already added)" : f.getName(),
-                            17f, have ? Ui.DIM : Ui.TXT, true);
+                    final boolean zip = Library.isZip(f.getName());
+                    boolean have = !zip && new File(Library.dir(this), f.getName()).isFile();
+                    final TextView name = Ui.text(this, zip ? f.getName() + "  (zip: tap to unpack)"
+                            : have ? f.getName() + "  (already added)" : f.getName(),
+                            17f, have ? Ui.DIM : zip ? Ui.CAB : Ui.TXT, true);
                     name.setSingleLine(true);
                     r.addView(name);
                     String parent = f.getParent() == null ? "" : f.getParent();
                     r.addView(Ui.text(this, parent + "  \u00b7  " + (f.length() / 1024) + " KB", 13f, Ui.DIM, false));
-                    r.setOnClickListener(v -> importOne(f, name));
+                    r.setOnClickListener(v -> {
+                        if (zip) {
+                            importZip(f, name);
+                        } else {
+                            importOne(f, name);
+                        }
+                    });
                     list.addView(r, Ui.lp(this, MATCH, WRAP, 0, 4));
-                    if (!have) {
+                    if (!have && !zip) {
                         found.add(f);
                         names.add(name);
                     }
                 }
             });
         }, "import-scan").start();
+    }
+
+    /** Maps a folder name from a zip onto an existing group, creating one if needed. */
+    private String groupForFolder(String folder, String fallback) {
+        String name = folder == null ? "" : folder.replace('\n', ' ').trim();
+        if (name.isEmpty()) {
+            return fallback;
+        }
+        if (name.length() > 24) {
+            name = name.substring(0, 24).trim();
+        }
+        for (String g : userGroups()) {
+            if (g.equalsIgnoreCase(name)) {
+                return g;
+            }
+        }
+        if (groupNameTaken(name)) {
+            return fallback;
+        }
+        List<String> custom = customGroups();
+        custom.add(name);
+        saveCustomGroups(custom);
+        return name;
+    }
+
+    private void importZip(final File f, final TextView name) {
+        final String fallback = importGroup;
+        setStatus("Unpacking " + f.getName() + "...");
+        new Thread(() -> {
+            final java.util.Map<String, String> folders = new java.util.LinkedHashMap<>();
+            String err = null;
+            int n = 0;
+            try {
+                n = Library.unpackZip(getApplicationContext(), f, folders);
+            } catch (Throwable t) {
+                err = t.getClass().getSimpleName() + ": " + t.getMessage();
+            }
+            final String e = err;
+            final int count = n;
+            runOnUiThread(() -> {
+                SharedPreferences.Editor ed = getSharedPreferences("groups", MODE_PRIVATE).edit();
+                for (java.util.Map.Entry<String, String> en : folders.entrySet()) {
+                    ed.putString(en.getKey(), groupForFolder(en.getValue(), fallback));
+                }
+                ed.apply();
+                if (e != null) {
+                    setStatus("Could not finish unpacking " + f.getName() + " (" + count + " added). " + ascii(e));
+                } else if (count == 0) {
+                    setStatus("No audio files found inside " + f.getName() + ".");
+                } else {
+                    name.setTextColor(Ui.OK);
+                    name.setText(f.getName() + "  (" + count + " sounds added)");
+                    setStatus("Added " + count + " sounds from " + f.getName() + ".");
+                }
+            });
+        }, "import-zip").start();
     }
 
     private void importOne(final File f, final TextView name) {

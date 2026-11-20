@@ -32,6 +32,44 @@ final class Library {
         return false;
     }
 
+    static boolean isZip(String name) {
+        return name.toLowerCase(Locale.US).endsWith(".zip");
+    }
+
+    /**
+     * Unpacks the audio files in a zip into the user's sounds. Only the file name is
+     * used for the destination, so entries cannot escape the sounds folder.
+     *
+     * @param folders filled with file name to top-level folder inside the zip ("" if none)
+     * @return number of sounds unpacked
+     */
+    static int unpackZip(Context c, File zip, java.util.Map<String, String> folders) throws Exception {
+        int count = 0;
+        try (java.util.zip.ZipInputStream zin = new java.util.zip.ZipInputStream(new FileInputStream(zip))) {
+            java.util.zip.ZipEntry e;
+            byte[] buf = new byte[65536];
+            while ((e = zin.getNextEntry()) != null) {
+                String path = e.getName().replace('\\', '/');
+                String base = path.substring(path.lastIndexOf('/') + 1);
+                if (e.isDirectory() || base.isEmpty() || base.startsWith(".") || path.startsWith("__MACOSX")
+                        || !isAudio(base)) {
+                    continue;
+                }
+                String[] parts = path.split("/");
+                String folder = parts.length >= 2 ? parts[parts.length - 2].trim() : "";
+                try (OutputStream os = new FileOutputStream(new File(dir(c), base))) {
+                    int n;
+                    while ((n = zin.read(buf)) > 0) {
+                        os.write(buf, 0, n);
+                    }
+                }
+                folders.put(base, folder);
+                count++;
+            }
+        }
+        return count;
+    }
+
     static File dir(Context c) {
         File d = new File(c.getFilesDir(), "user-sounds");
         if (!d.isDirectory()) {
@@ -87,7 +125,7 @@ final class Library {
         return dst;
     }
 
-    /** Audio files in Downloads, Music and on any plugged-in USB storage. */
+    /** Audio files and zip archives in Downloads, Music and on any plugged-in USB storage. */
     static List<File> findImportable() {
         List<File> out = new ArrayList<>();
         List<File> roots = new ArrayList<>();
@@ -138,7 +176,7 @@ final class Library {
                 return;
             }
             if (f.isFile()) {
-                if (isAudio(f.getName()) && !out.contains(f)) {
+                if ((isAudio(f.getName()) || isZip(f.getName())) && !out.contains(f)) {
                     out.add(f);
                 }
             } else if (f.isDirectory() && !f.getName().startsWith(".") && !f.getName().equals("Android")) {
