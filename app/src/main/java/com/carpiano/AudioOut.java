@@ -308,7 +308,7 @@ public class AudioOut {
                 pcm[i] = (short) Math.max(-32768, Math.min(32767, Math.round(pcm[i] * k)));
             }
         }
-        double vol = Pcm.gainPercent() / 100.0;
+        double vol = Player.gainPercent() / 100.0;
         if (vol != 1.0) {
             for (int i = 0; i < total; i++) {
                 pcm[i] = (short) Math.max(-32768, Math.min(32767, Math.round(pcm[i] * vol)));

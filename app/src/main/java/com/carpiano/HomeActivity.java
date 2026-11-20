@@ -32,8 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * English home screen: Sounds, Live mic and Setup. The original Cantonese
- * screens (piano, recorder, auto start) stay reachable as "Classic".
+ * English home screen: Sounds, Live mic and Setup.
  */
 public class HomeActivity extends Activity {
 
@@ -41,6 +40,7 @@ public class HomeActivity extends Activity {
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static final int REQ_MIC = 77;
+    private static final int REQ_FILES = 78;
     private static final long LATCH_LIMIT_MS = 30000L;
 
     /** label, category, file under assets/sounds. */
@@ -59,7 +59,7 @@ public class HomeActivity extends Activity {
             {"Ta-da", "Fun", "ta-da.wav"},
             {"Level up", "Fun", "level-up.wav"},
     };
-    private static final String[] CATEGORIES = {"All", "Courtesy", "Greetings", "Fun", "My recordings"};
+    private static final String[] CATEGORIES = {"All", "Courtesy", "Greetings", "Fun", "My sounds"};
 
     private static final class Sound {
         final String label;
@@ -139,7 +139,7 @@ public class HomeActivity extends Activity {
             audio = new AudioOut(this);
             sp = getSharedPreferences("piano", MODE_PRIVATE);
             Prefs.repair(this);
-            Pcm.setGainPercent(sp.getInt("vol_pct", 60));
+            Player.setGainPercent(sp.getInt("vol_pct", 60));
             setContentView(buildRoot());
             showPage(0);
             checkUpdate(false);
@@ -171,9 +171,6 @@ public class HomeActivity extends Activity {
             navButtons.add(b);
             nav.addView(b, Ui.lp(this, MATCH, Ui.dp(this, 68), 0, 4));
         }
-        View spacer = new View(this);
-        nav.addView(spacer, Ui.lp(MATCH, 0, 1f));
-        nav.addView(navButton("Classic", this::openClassic), Ui.lp(this, MATCH, Ui.dp(this, 68), 0, 4));
         root.addView(nav, Ui.lp(Ui.dp(this, 132), MATCH, 0));
 
         LinearLayout right = Ui.col(this);
@@ -211,15 +208,15 @@ public class HomeActivity extends Activity {
         updateBanner.setVisibility(View.GONE);
         bar.addView(updateBanner, Ui.lp(this, WRAP, WRAP, 0, 6));
 
-        final TextView volText = Ui.text(this, "Volume " + Pcm.gainPercent() + "%", 14f, Ui.DIM, true);
+        final TextView volText = Ui.text(this, "Volume " + Player.gainPercent() + "%", 14f, Ui.DIM, true);
         bar.addView(volText, Ui.lp(this, WRAP, WRAP, 0, 6));
         SeekBar vol = new SeekBar(this);
         vol.setMax(100);
-        vol.setProgress(Pcm.gainPercent());
+        vol.setProgress(Player.gainPercent());
         vol.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar s, int v, boolean fromUser) {
-                Pcm.setGainPercent(v);
+                Player.setGainPercent(v);
                 volText.setText("Volume " + v + "%");
                 applyMicGain();
             }
@@ -298,15 +295,6 @@ public class HomeActivity extends Activity {
         }
     }
 
-    private void openClassic() {
-        stopMic();
-        try {
-            startActivity(new Intent(this, MainActivity.class));
-        } catch (Throwable t) {
-            setStatus("Could not open the classic screens: " + t.getClass().getSimpleName());
-        }
-    }
-
     // ----------------------------------------------------------------- sounds
 
     private List<Sound> allSounds() {
@@ -315,8 +303,8 @@ public class HomeActivity extends Activity {
             out.add(new Sound(b[0], b[1], b[2], null));
         }
         try {
-            for (File f : Slots.recs(this)) {
-                out.add(new Sound(Slots.bare(f.getName()), "My recordings", null, f));
+            for (File f : Library.userSounds(this)) {
+                out.add(new Sound(Library.label(f), "My sounds", null, f));
             }
         } catch (Throwable ignored) {
         }
@@ -342,9 +330,11 @@ public class HomeActivity extends Activity {
         }
         hs.addView(chips);
         top.addView(hs, Ui.lp(0, WRAP, 1f));
+        top.addView(Ui.button(this, "Add sounds", Ui.RAISE, Ui.TXT, this::showImport),
+                Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Stop", Ui.TXT, Ui.BG, () -> {
             playSeq++;
-            Pcm.stopAll();
+            Player.stop();
             setStatus("Stopped.");
         }), Ui.lp(this, Ui.dp(this, 140), WRAP, 0, 4));
         page.addView(top, Ui.lp(MATCH, WRAP, 0));
@@ -358,8 +348,8 @@ public class HomeActivity extends Activity {
             }
         }
         if (shown.isEmpty()) {
-            TextView none = Ui.text(this, "My recordings".equals(category)
-                    ? "No recordings yet. Record one from Classic, on the recorder tab, and it will appear here."
+            TextView none = Ui.text(this, "My sounds".equals(category)
+                    ? "Nothing here yet. Tap Add sounds to bring in MP3 or WAV files."
                     : "Nothing in this category yet.", 16f, Ui.DIM, false);
             none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
             grid.addView(none);
@@ -397,6 +387,26 @@ public class HomeActivity extends Activity {
         t.addView(name);
         t.addView(Ui.text(this, s.category, 13f, Ui.DIM, false));
         t.setOnClickListener(v -> play(s));
+        if (s.file != null) {
+            t.setOnLongClickListener(v -> {
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Remove " + s.label + "?")
+                        .setMessage("This deletes the sound from the app.")
+                        .setPositiveButton("Remove", (d, w) -> {
+                            playSeq++;
+                            Player.stop();
+                            if (s.file.delete()) {
+                                setStatus("Removed " + s.label + ".");
+                            } else {
+                                setStatus("Could not remove " + s.label + ".");
+                            }
+                            showPage(0);
+                        })
+                        .setNegativeButton("Keep", null)
+                        .show();
+                return true;
+            });
+        }
         return t;
     }
 
@@ -417,24 +427,103 @@ public class HomeActivity extends Activity {
         }
         final int usage = outside ? AudioAttributes.USAGE_MEDIA : AudioAttributes.USAGE_NOTIFICATION;
         stopMic();
-        Pcm.stopAll();
         final int token = ++playSeq;
         setStatus("Playing " + s.label + (outside ? " through the outside speaker." : " in the cabin."));
-        Pcm.Cb cb = msg -> runOnUiThread(() -> {
-            if (token != playSeq) {
-                return;
-            }
-            if (msg != null && msg.startsWith("✅")) {
-                setStatus("Finished: " + s.label + ".");
-            } else {
-                setStatus("Could not play " + s.label + ". " + ascii(msg));
-            }
-        });
-        if (s.asset != null) {
-            Pcm.playAsset(this, "sounds/" + s.asset, dev, usage, AudioAttributes.CONTENT_TYPE_MUSIC, cb);
-        } else {
-            Pcm.playFile(this, s.file, dev, usage, AudioAttributes.CONTENT_TYPE_MUSIC, cb);
+        Player.play(this, s.asset != null ? "sounds/" + s.asset : null, s.file, dev, usage,
+                (ok, msg) -> runOnUiThread(() -> {
+                    if (token != playSeq) {
+                        return;
+                    }
+                    if (ok) {
+                        setStatus("Finished: " + s.label + ".");
+                    } else {
+                        setStatus("Could not play " + s.label + ". " + ascii(msg));
+                    }
+                }));
+    }
+
+    // ----------------------------------------------------------------- import
+
+    private void showImport() {
+        if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, REQ_FILES);
         }
+        title.setText("Add sounds");
+        host.removeAllViews();
+        LinearLayout page = Ui.col(this);
+        int p = Ui.dp(this, 20);
+        page.setPadding(p, Ui.dp(this, 14), p, 0);
+        LinearLayout top = Ui.row(this);
+        TextView help = Ui.text(this, "Audio files found in Downloads, Music and on USB storage. "
+                + "Tap one to copy it into My sounds. MP3, WAV, M4A, OGG and FLAC are supported.",
+                15f, Ui.DIM, false);
+        top.addView(help, Ui.lp(0, WRAP, 1f));
+        top.addView(Ui.button(this, "Scan again", Ui.RAISE, Ui.TXT, this::showImport),
+                Ui.lp(this, WRAP, WRAP, 0, 4));
+        top.addView(Ui.button(this, "Done", Ui.TXT, Ui.BG, () -> {
+            category = "My sounds";
+            showPage(0);
+        }), Ui.lp(this, Ui.dp(this, 140), WRAP, 0, 4));
+        page.addView(top, Ui.lp(MATCH, WRAP, 0));
+
+        ScrollView sv = new ScrollView(this);
+        final LinearLayout list = Ui.col(this);
+        list.addView(Ui.text(this, "Scanning...", 16f, Ui.DIM, false));
+        sv.addView(list);
+        page.addView(sv, Ui.lp(MATCH, 0, 1f));
+        host.addView(page, new FrameLayout.LayoutParams(MATCH, MATCH));
+
+        new Thread(() -> {
+            final List<File> found = Library.findImportable();
+            runOnUiThread(() -> {
+                list.removeAllViews();
+                if (found.isEmpty()) {
+                    TextView none = Ui.text(this, "No audio files found. Download MP3 or WAV files with "
+                            + "the car's browser, or plug in a USB stick, then tap Scan again. If Android "
+                            + "asked for permission to read files, allow it first.", 16f, Ui.DIM, false);
+                    none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
+                    list.addView(none);
+                    return;
+                }
+                for (final File f : found) {
+                    LinearLayout r = Ui.col(this);
+                    r.setBackground(Ui.box(this, Ui.SURF, Ui.LINE, 14));
+                    int rp = Ui.dp(this, 14);
+                    r.setPadding(rp, rp, rp, rp);
+                    r.setClickable(true);
+                    r.setFocusable(true);
+                    final TextView name = Ui.text(this, f.getName(), 17f, Ui.TXT, true);
+                    name.setSingleLine(true);
+                    r.addView(name);
+                    String parent = f.getParent() == null ? "" : f.getParent();
+                    r.addView(Ui.text(this, parent + "  \u00b7  " + (f.length() / 1024) + " KB", 13f, Ui.DIM, false));
+                    r.setOnClickListener(v -> importOne(f, name));
+                    list.addView(r, Ui.lp(this, MATCH, WRAP, 0, 4));
+                }
+            });
+        }, "import-scan").start();
+    }
+
+    private void importOne(final File f, final TextView name) {
+        setStatus("Copying " + f.getName() + "...");
+        new Thread(() -> {
+            String err = null;
+            try {
+                Library.importFile(getApplicationContext(), f);
+            } catch (Throwable t) {
+                err = t.getClass().getSimpleName() + ": " + t.getMessage();
+            }
+            final String e = err;
+            runOnUiThread(() -> {
+                if (e == null) {
+                    name.setTextColor(Ui.OK);
+                    name.setText(f.getName() + "  (added)");
+                    setStatus("Added " + f.getName() + " to My sounds.");
+                } else {
+                    setStatus("Could not copy " + f.getName() + ". " + ascii(e));
+                }
+            });
+        }, "import-copy").start();
     }
 
     /** Keeps only the plain-English part of a message from the original code. */
@@ -543,7 +632,7 @@ public class HomeActivity extends Activity {
     }
 
     private void applyMicGain() {
-        mic.gain = Pcm.gainPercent() / 100.0 * (micBoost ? 2.5 : 1.0);
+        mic.gain = Player.gainPercent() / 100.0 * (micBoost ? 2.5 : 1.0);
     }
 
     private boolean startMic() {
@@ -558,7 +647,7 @@ public class HomeActivity extends Activity {
             return false;
         }
         playSeq++;
-        Pcm.stopAll();
+        Player.stop();
         applyMicGain();
         mic.start(dev);
         setStatus("Live mic on.");
@@ -614,16 +703,6 @@ public class HomeActivity extends Activity {
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         scan.addView(sb);
         page.addView(scan, Ui.lp(this, MATCH, WRAP, 0, 6));
-
-        LinearLayout classic = Ui.card(this);
-        classic.addView(Ui.text(this, "Classic screens", 20f, Ui.TXT, true));
-        classic.addView(Ui.text(this, "The original piano, recorder, floating panel and auto start. "
-                + "They are still in Cantonese until they are rebuilt here.", 15f, Ui.DIM, false));
-        LinearLayout cb = Ui.row(this);
-        cb.addView(Ui.button(this, "Open classic", Ui.RAISE, Ui.TXT, this::openClassic),
-                Ui.lp(this, WRAP, WRAP, 0, 4));
-        classic.addView(cb);
-        page.addView(classic, Ui.lp(this, MATCH, WRAP, 0, 6));
 
         String crash = null;
         try {

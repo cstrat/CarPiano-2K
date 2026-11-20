@@ -9,10 +9,12 @@ An English rebuild of [jlunnn/CarPiano](https://github.com/jlunnn/CarPiano), a s
 | Stage | State |
 | --- | --- |
 | Automatic APK builds on GitHub | Working |
-| Original app verified on an Australian-delivered 7X | Being tested |
-| English interface (soundboard, live mic, stream, car controls) | Next |
+| English home screen: Sounds, Live mic, Setup | In testing on a 7X |
+| Import your own MP3 / WAV files | In testing |
+| In-app update check and one-tap install | In testing |
+| Music streaming page, car controls, automations, piano | Not built yet |
 
-Right now the app code is still the original. The redesign lands here once the outside speaker is confirmed working on the test car.
+The original Cantonese screens have been removed from this fork. The audio routing and vehicle-interface code they relied on is kept.
 
 ## Download
 
