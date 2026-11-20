@@ -29,6 +29,14 @@ android {
     }
 
     signingConfigs {
+        // Fixed debug key committed to the repo so every CI build has the same
+        // signature and installs over the previous one. Not a secret.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (keystorePropsFile.exists()) {
             create("release") {
                 storeFile = file(keystoreProps.getProperty("storeFile"))

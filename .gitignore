@@ -13,6 +13,8 @@ captures/
 keystore.properties
 *.jks
 *.keystore
+# Shared debug key for CI builds (not a secret)
+!app/debug.keystore
 
 # OS
 .DS_Store
