@@ -1165,7 +1165,7 @@ public class HomeActivity extends Activity {
         fb.addView(Ui.button(this, FloatService.running ? "Hide widget" : "Show widget", Ui.RAISE, Ui.TXT, () -> {
             toggleFloat();
             h.postDelayed(() -> {
-                if (page == P_SETUP) {
+                if (HomeActivity.this.page == P_SETUP) {
                     showPage(P_SETUP);
                 }
             }, 900);
