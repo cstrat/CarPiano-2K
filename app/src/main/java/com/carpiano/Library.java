@@ -32,6 +32,31 @@ final class Library {
         return false;
     }
 
+    static final String[] PRESETS = {"My sounds", "F1", "Memes", "TV and film", "Useful", "Whoopee"};
+
+    /** Groups the user created, in the order they made them. */
+    static List<String> customGroups(Context c) {
+        List<String> out = new ArrayList<>();
+        String raw = c.getSharedPreferences("groups_meta", Context.MODE_PRIVATE).getString("custom", "");
+        for (String g : raw.split("\n")) {
+            if (!g.trim().isEmpty()) {
+                out.add(g.trim());
+            }
+        }
+        return out;
+    }
+
+    /** Presets first, then the user's own groups. */
+    static List<String> allGroups(Context c) {
+        List<String> out = new ArrayList<>(Arrays.asList(PRESETS));
+        out.addAll(customGroups(c));
+        return out;
+    }
+
+    static String groupOf(Context c, File f) {
+        return c.getSharedPreferences("groups", Context.MODE_PRIVATE).getString(f.getName(), "My sounds");
+    }
+
     static boolean isZip(String name) {
         return name.toLowerCase(Locale.US).endsWith(".zip");
     }

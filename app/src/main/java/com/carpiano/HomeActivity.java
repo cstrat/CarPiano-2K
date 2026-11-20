@@ -45,7 +45,7 @@ public class HomeActivity extends Activity {
     private static final long LATCH_LIMIT_MS = 30000L;
 
     /** Preset groups the user can file imported sounds under. They can add their own too. */
-    private static final String[] USER_GROUPS = {"My sounds", "F1", "Memes", "TV and film", "Useful", "Whoopee"};
+    private static final String[] USER_GROUPS = Library.PRESETS;
 
     private static final class Sound {
         final String label;
@@ -129,6 +129,10 @@ public class HomeActivity extends Activity {
             setContentView(buildRoot());
             showPage(P_SOUNDS);
             checkUpdate(false);
+            if (sp.getBoolean("float_on", false) && !FloatService.running
+                    && android.provider.Settings.canDrawOverlays(this)) {
+                startFloat();
+            }
         } catch (Throwable t) {
             setContentView(errorView(t));
         }
@@ -331,6 +335,8 @@ public class HomeActivity extends Activity {
         }
         hs.addView(chips);
         top.addView(hs, Ui.lp(0, WRAP, 1f));
+        top.addView(Ui.button(this, FloatService.running ? "Unfloat" : "Float", Ui.RAISE, Ui.TXT,
+                this::toggleFloat), Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Add sounds", Ui.RAISE, Ui.TXT, this::showImport),
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Stop", Ui.TXT, Ui.BG, () -> {
@@ -452,6 +458,53 @@ public class HomeActivity extends Activity {
                         setStatus("Could not play " + s.label + ". " + ascii(msg));
                     }
                 }));
+    }
+
+    // ------------------------------------------------------------------ float
+
+    private void toggleFloat() {
+        try {
+            if (FloatService.running) {
+                stopService(new Intent(this, FloatService.class));
+                sp.edit().putBoolean("float_on", false).apply();
+                setStatus("Floating soundboard hidden.");
+                h.postDelayed(() -> {
+                    if (page == P_SOUNDS) {
+                        showPage(P_SOUNDS);
+                    }
+                }, 400);
+                return;
+            }
+            if (!android.provider.Settings.canDrawOverlays(this)) {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:" + getPackageName())));
+                    setStatus("Allow CarTalk to display over other apps, come back, and tap Float again.");
+                } catch (Throwable t) {
+                    setStatus("This head unit has no screen for allowing apps to draw over others, "
+                            + "so the floating soundboard cannot be shown.");
+                }
+                return;
+            }
+            sp.edit().putBoolean("float_on", true).apply();
+            startFloat();
+        } catch (Throwable t) {
+            setStatus("Could not change the floating soundboard: " + t.getClass().getSimpleName());
+        }
+    }
+
+    private void startFloat() {
+        startForegroundService(new Intent(this, FloatService.class));
+        h.postDelayed(() -> {
+            if (FloatService.running) {
+                setStatus("Floating soundboard is on. Drag the round button anywhere; tap it to open.");
+            } else {
+                setStatus("Floating soundboard did not start. " + ascii(FloatService.lastError));
+            }
+            if (page == P_SOUNDS) {
+                showPage(P_SOUNDS);
+            }
+        }, 600);
     }
 
     // ----------------------------------------------------------------- groups
