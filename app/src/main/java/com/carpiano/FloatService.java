@@ -256,7 +256,7 @@ public class FloatService extends Service {
         t.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, 22), Ui.dp(this, 110)));
         t.setOnTouchListener((v, e) -> {
             if (e.getActionMasked() == MotionEvent.ACTION_UP) {
-                undock();
+                h.post(this::undock);
             }
             return true;
         });
@@ -874,6 +874,15 @@ public class FloatService extends Service {
             });
         }
 
+        /**
+         * The widget has no use for window insets, and dispatching them to its children
+         * crashed the app on the head unit when the window reached a screen edge.
+         */
+        @Override
+        public android.view.WindowInsets dispatchApplyWindowInsets(android.view.WindowInsets insets) {
+            return insets;
+        }
+
         @Override
         public boolean dispatchTouchEvent(MotionEvent e) {
             try {
@@ -906,7 +915,7 @@ public class FloatService extends Service {
         private boolean moved;
 
         Drag(Runnable onTap) {
-            this.onTap = onTap;
+            this.onTap = onTap == null ? null : () -> h.post(onTap);
         }
 
         @Override
@@ -939,10 +948,12 @@ public class FloatService extends Service {
                         if (moved) {
                             int edge = Ui.dp(FloatService.this, 28);
                             float x = e.getRawX();
+                            // Posted, so the views are not swapped while this touch is still
+                            // being delivered to them.
                             if (x <= edge) {
-                                dock(true);
+                                h.post(() -> dock(true));
                             } else if (x >= screenW() - edge) {
-                                dock(false);
+                                h.post(() -> dock(false));
                             } else {
                                 sp.edit().putInt("float_x", lp.x).putInt("float_y", lp.y).apply();
                             }

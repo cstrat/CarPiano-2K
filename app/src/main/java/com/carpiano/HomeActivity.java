@@ -36,8 +36,8 @@ import java.util.List;
  */
 public class HomeActivity extends Activity {
 
-    private static final String[] PAGES = {"Sounds", "Live mic", "Whoopee", "Widget", "Setup"};
-    private static final int P_SOUNDS = 0, P_MIC = 1, P_WHOOPEE = 2, P_WIDGET = 3, P_SETUP = 4;
+    private static final String[] PAGES = {"Library", "Widget", "Setup"};
+    private static final int P_SOUNDS = 0, P_WIDGET = 1, P_SETUP = 2;
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static final int REQ_MIC = 77;
@@ -62,7 +62,6 @@ public class HomeActivity extends Activity {
     }
 
     private final Handler h = new Handler(Looper.getMainLooper());
-    private final LiveMic mic = new LiveMic();
     private final List<TextView> navButtons = new ArrayList<>();
 
     private AudioOut audio;
@@ -78,44 +77,10 @@ public class HomeActivity extends Activity {
     private String category = "All";
     private int playSeq;
 
-    private boolean micBoost = true;
-    private boolean latched;
-    private ProgressBar micLevel;
-    private TextView micState;
-    private TextView latchBtn;
-
     private int latestBuild = -1;
     private String latestUrl;
     private String updateMsg = "Not checked yet.";
     private TextView updateText;
-
-    private final Runnable micTick = new Runnable() {
-        @Override
-        public void run() {
-            if (page != P_MIC) {
-                return;
-            }
-            if (micLevel != null) {
-                micLevel.setProgress(mic.level);
-            }
-            String err = mic.error;
-            if (err != null) {
-                mic.error = null;
-                latched = false;
-                setStatus("Live mic stopped: " + err);
-            }
-            refreshMicState();
-            h.postDelayed(this, 100);
-        }
-    };
-
-    private final Runnable latchOff = () -> {
-        if (latched) {
-            latched = false;
-            mic.stop();
-            setStatus("Live mic switched off automatically after 30 seconds.");
-        }
-    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -136,12 +101,6 @@ public class HomeActivity extends Activity {
         } catch (Throwable t) {
             setContentView(errorView(t));
         }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        stopMic();
     }
 
     // ------------------------------------------------------------------ frame
@@ -208,7 +167,6 @@ public class HomeActivity extends Activity {
             public void onProgressChanged(SeekBar s, int v, boolean fromUser) {
                 Player.setGainPercent(v);
                 volText.setText("Volume " + v + "%");
-                applyMicGain();
             }
 
             @Override
@@ -253,9 +211,6 @@ public class HomeActivity extends Activity {
     }
 
     private void showPage(int idx) {
-        if (page == P_MIC && idx != P_MIC) {
-            stopMic();
-        }
         page = idx;
         closeBrowser();
         for (int i = 0; i < navButtons.size(); i++) {
@@ -268,20 +223,12 @@ public class HomeActivity extends Activity {
         View v;
         if (idx == P_SOUNDS) {
             v = buildSounds();
-        } else if (idx == P_MIC) {
-            v = buildLiveMic();
-        } else if (idx == P_WHOOPEE) {
-            v = buildWhoopee();
         } else if (idx == P_WIDGET) {
             v = buildWidget();
         } else {
             v = buildSetup();
         }
         host.addView(v, new FrameLayout.LayoutParams(MATCH, MATCH));
-        if (idx == P_MIC) {
-            h.removeCallbacks(micTick);
-            h.post(micTick);
-        }
     }
 
     private void setStatus(String s) {
@@ -338,8 +285,6 @@ public class HomeActivity extends Activity {
         }
         hs.addView(chips);
         top.addView(hs, Ui.lp(0, WRAP, 1f));
-        top.addView(Ui.button(this, FloatService.running ? "Unfloat" : "Float", Ui.RAISE, Ui.TXT,
-                this::toggleFloat), Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Browse web", Ui.RAISE, Ui.TXT, this::showBrowser),
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Add sounds", Ui.RAISE, Ui.TXT, this::showImport),
@@ -351,6 +296,42 @@ public class HomeActivity extends Activity {
         }), Ui.lp(this, Ui.dp(this, 140), WRAP, 0, 4));
         page.addView(top, Ui.lp(MATCH, WRAP, 0));
 
+        if (!"All".equals(category)) {
+            final String g = category;
+            LinearLayout tools = Ui.row(this);
+            tools.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
+            tools.addView(Ui.text(this, "Colour", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
+            int current = Library.colorOf(this, g);
+            for (final int c : Library.palette()) {
+                View sw = new View(this);
+                android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
+                dot.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+                dot.setColor(c);
+                if (c == current) {
+                    dot.setStroke(Ui.dp(this, 3), Ui.TXT);
+                }
+                sw.setBackground(dot);
+                sw.setClickable(true);
+                sw.setOnClickListener(v -> {
+                    Library.setColor(this, g, c);
+                    restartWidgetQuietly();
+                    showPage(P_SOUNDS);
+                });
+                tools.addView(sw, Ui.lp(this, Ui.dp(this, 40), Ui.dp(this, 40), 0, 5));
+            }
+            tools.addView(Ui.button(this, "Auto", Ui.RAISE, Ui.TXT, () -> {
+                Library.clearColor(this, g);
+                restartWidgetQuietly();
+                showPage(P_SOUNDS);
+            }), Ui.lp(this, WRAP, WRAP, 0, 6));
+            if (isCustomGroup(g)) {
+                tools.addView(new View(this), Ui.lp(0, 1, 1f));
+                tools.addView(Ui.button(this, "Delete group", Ui.RAISE, Ui.TXT, () -> confirmDeleteGroup(g)),
+                        Ui.lp(this, WRAP, WRAP, 0, 4));
+            }
+            page.addView(tools, Ui.lp(MATCH, WRAP, 0));
+        }
+
         ScrollView sv = new ScrollView(this);
         LinearLayout grid = Ui.col(this);
         List<Sound> shown = new ArrayList<>();
@@ -360,8 +341,8 @@ public class HomeActivity extends Activity {
             }
         }
         if (shown.isEmpty()) {
-            TextView none = Ui.text(this, "Nothing here yet. Tap Add sounds to bring in your own MP3 or "
-                    + "WAV files, or a zip of them. Long-press a sound afterwards to move it to another group.",
+            TextView none = Ui.text(this, "Nothing here yet. Tap Browse web or Add sounds to bring in your own MP3 "
+                    + "or WAV files. Long-press a sound to move, rename, favourite or remove it.",
                     16f, Ui.DIM, false);
             none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
             grid.addView(none);
@@ -388,7 +369,7 @@ public class HomeActivity extends Activity {
 
     private View tile(final Sound s) {
         LinearLayout t = Ui.col(this);
-        t.setBackground(Ui.box(this, Ui.SURF, Ui.LINE, 18));
+        t.setBackground(Ui.box(this, Ui.blend(Library.colorOf(this, s.category), Ui.SURF, 0.2f), 0, 18));
         int p = Ui.dp(this, 16);
         t.setPadding(p, p, p, p);
         t.setGravity(Gravity.BOTTOM);
@@ -405,13 +386,14 @@ public class HomeActivity extends Activity {
             t.setOnLongClickListener(v -> {
                 final List<String> groups = userGroups();
                 final boolean fav = Library.isFav(this, s.file);
-                final String[] items = new String[groups.size() + 3];
+                final String[] items = new String[groups.size() + 4];
                 for (int k = 0; k < groups.size(); k++) {
                     items[k] = "Move to " + groups.get(k);
                 }
                 items[groups.size()] = "Move to a new group...";
                 items[groups.size() + 1] = fav ? "Remove from favourites" : "Add to favourites";
-                items[groups.size() + 2] = "Remove from the app";
+                items[groups.size() + 2] = "Rename";
+                items[groups.size() + 3] = "Remove from the app";
                 new android.app.AlertDialog.Builder(this)
                         .setTitle(s.label)
                         .setItems(items, (d, which) -> {
@@ -423,7 +405,10 @@ public class HomeActivity extends Activity {
                                 Library.setFav(this, s.file, !fav);
                                 setStatus(fav ? "Removed " + s.label + " from favourites."
                                         : "Added " + s.label + " to favourites.");
+                                restartWidgetQuietly();
                                 showPage(P_SOUNDS);
+                            } else if (which == groups.size() + 2) {
+                                renameSound(s);
                             } else {
                                 playSeq++;
                                 Player.stop();
@@ -442,6 +427,43 @@ public class HomeActivity extends Activity {
         return t;
     }
 
+    private void renameSound(final Sound s) {
+        final android.widget.EditText in = new android.widget.EditText(this);
+        in.setSingleLine(true);
+        in.setText(s.label);
+        in.setSelectAllOnFocus(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Rename sound")
+                .setView(in)
+                .setPositiveButton("Rename", (d, w) -> {
+                    String label = in.getText().toString().replaceAll("[\\\\/:*?\"<>|\\n]", " ").trim();
+                    if (label.isEmpty() || label.equals(s.label)) {
+                        return;
+                    }
+                    playSeq++;
+                    Player.stop();
+                    File dst = Library.rename(this, s.file, label);
+                    setStatus(dst == null ? "Could not rename " + s.label + "." : "Renamed to " + Library.label(dst) + ".");
+                    restartWidgetQuietly();
+                    showPage(P_SOUNDS);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Restarts the floating widget, if it is showing, so it picks up a library change. */
+    private void restartWidgetQuietly() {
+        if (FloatService.running) {
+            stopService(new Intent(this, FloatService.class));
+            h.postDelayed(() -> {
+                try {
+                    startForegroundService(new Intent(this, FloatService.class));
+                } catch (Throwable ignored) {
+                }
+            }, 500);
+        }
+    }
+
     private void play(final Sound s) {
         final boolean outside = Prefs.outer(this);
         AudioDeviceInfo dev;
@@ -458,7 +480,6 @@ public class HomeActivity extends Activity {
             }
         }
         final int usage = outside ? AudioAttributes.USAGE_MEDIA : AudioAttributes.USAGE_NOTIFICATION;
-        stopMic();
         final int token = ++playSeq;
         setStatus("Playing " + s.label + (outside ? " through the outside speaker." : " in the cabin."));
         Player.play(this, s.asset, s.file, dev, usage,
@@ -483,8 +504,8 @@ public class HomeActivity extends Activity {
                 sp.edit().putBoolean("float_on", false).apply();
                 setStatus("Floating soundboard hidden.");
                 h.postDelayed(() -> {
-                    if (page == P_SOUNDS) {
-                        showPage(P_SOUNDS);
+                    if (page == P_WIDGET) {
+                        showPage(P_WIDGET);
                     }
                 }, 400);
                 return;
@@ -493,7 +514,7 @@ public class HomeActivity extends Activity {
                 try {
                     startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             android.net.Uri.parse("package:" + getPackageName())));
-                    setStatus("Allow CarTalk to display over other apps, come back, and tap Float again.");
+                    setStatus("Allow CarTalk to display over other apps, come back, and switch the widget on again.");
                 } catch (Throwable t) {
                     setStatus("This head unit has no screen for allowing apps to draw over others, "
                             + "so the floating soundboard cannot be shown.");
@@ -515,8 +536,8 @@ public class HomeActivity extends Activity {
             } else {
                 setStatus("Floating soundboard did not start. " + ascii(FloatService.lastError));
             }
-            if (page == P_SOUNDS) {
-                showPage(P_SOUNDS);
+            if (page == P_WIDGET) {
+                showPage(P_WIDGET);
             }
         }, 600);
     }
@@ -563,7 +584,7 @@ public class HomeActivity extends Activity {
                     + t.getClass().getSimpleName() + ")", 16f, Ui.DIM, false);
             none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
             pg.addView(none);
-            pg.addView(Ui.button(this, "Back to Sounds", Ui.RAISE, Ui.TXT, () -> showPage(P_SOUNDS)),
+            pg.addView(Ui.button(this, "Back to Library", Ui.RAISE, Ui.TXT, () -> showPage(P_SOUNDS)),
                     Ui.lp(this, WRAP, WRAP, 0, 8));
             host.addView(pg, new FrameLayout.LayoutParams(MATCH, MATCH));
             return;
@@ -624,8 +645,8 @@ public class HomeActivity extends Activity {
         bar.addView(address, Ui.lp(0, WRAP, 1f));
         bar.addView(Ui.button(this, "Go", Ui.OK, Ui.BG, go), Ui.lp(this, WRAP, WRAP, 0, 3));
         bar.addView(Ui.button(this, "Done", Ui.TXT, Ui.BG, () -> {
-            category = "Whoopee".equals(importGroup) ? "All" : importGroup;
-            showPage("Whoopee".equals(importGroup) ? P_WHOOPEE : P_SOUNDS);
+            category = importGroup;
+            showPage(P_SOUNDS);
         }), Ui.lp(this, WRAP, WRAP, 0, 3));
         pg.addView(bar, Ui.lp(MATCH, WRAP, 0));
 
@@ -881,7 +902,11 @@ public class HomeActivity extends Activity {
                         category = "All";
                     }
                     setStatus("Deleted group " + name + ".");
-                    showImport();
+                    if ("Add sounds".contentEquals(title.getText())) {
+                        showImport();
+                    } else {
+                        showPage(P_SOUNDS);
+                    }
                 })
                 .setNegativeButton("Keep", null)
                 .show();
@@ -890,12 +915,8 @@ public class HomeActivity extends Activity {
     private void moveSound(Sound s, String group) {
         getSharedPreferences("groups", MODE_PRIVATE).edit().putString(s.file.getName(), group).apply();
         setStatus("Moved " + s.label + " to " + group + ".");
-        if ("Whoopee".equals(group)) {
-            showPage(P_WHOOPEE);
-        } else {
-            category = group;
-            showPage(P_SOUNDS);
-        }
+        category = group;
+        showPage(P_SOUNDS);
     }
 
     // ----------------------------------------------------------------- import
@@ -927,8 +948,8 @@ public class HomeActivity extends Activity {
         top.addView(Ui.button(this, "Scan again", Ui.RAISE, Ui.TXT, this::showImport),
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         top.addView(Ui.button(this, "Done", Ui.TXT, Ui.BG, () -> {
-            category = "Whoopee".equals(importGroup) ? "All" : importGroup;
-            showPage("Whoopee".equals(importGroup) ? P_WHOOPEE : P_SOUNDS);
+            category = importGroup;
+            showPage(P_SOUNDS);
         }), Ui.lp(this, Ui.dp(this, 120), WRAP, 0, 4));
         page.addView(top, Ui.lp(MATCH, WRAP, 0));
 
@@ -1104,278 +1125,6 @@ public class HomeActivity extends Activity {
         return b.toString().trim();
     }
 
-    // --------------------------------------------------------------- live mic
-
-    private View buildLiveMic() {
-        LinearLayout page = Ui.row(this);
-        int p = Ui.dp(this, 20);
-        page.setPadding(p, p, p, p);
-
-        LinearLayout mid = Ui.col(this);
-        mid.setGravity(Gravity.CENTER);
-        final TextView hold = Ui.text(this, "Hold to talk", 24f, Ui.TXT, true);
-        hold.setGravity(Gravity.CENTER);
-        hold.setBackground(Ui.box(this, Ui.WARN_BG, Ui.OUT, 110));
-        hold.setClickable(true);
-        hold.setOnTouchListener((v, e) -> {
-            int a = e.getActionMasked();
-            if (a == MotionEvent.ACTION_DOWN) {
-                latched = false;
-                h.removeCallbacks(latchOff);
-                if (startMic()) {
-                    hold.setBackground(Ui.box(this, Ui.OUT, 0, 110));
-                    hold.setTextColor(Ui.BG);
-                    hold.setText("Talking");
-                }
-            } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
-                mic.stop();
-                hold.setBackground(Ui.box(this, Ui.WARN_BG, Ui.OUT, 110));
-                hold.setTextColor(Ui.TXT);
-                hold.setText("Hold to talk");
-            }
-            return true;
-        });
-        mid.addView(hold, Ui.lp(Ui.dp(this, 220), Ui.dp(this, 220), 0));
-
-        micState = Ui.text(this, "", 16f, Ui.DIM, true);
-        micState.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams ms = Ui.lp(MATCH, WRAP, 0);
-        ms.topMargin = Ui.dp(this, 16);
-        mid.addView(micState, ms);
-
-        micLevel = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        micLevel.setMax(100);
-        LinearLayout.LayoutParams ll = Ui.lp(Ui.dp(this, 320), Ui.dp(this, 12), 0);
-        ll.topMargin = Ui.dp(this, 12);
-        mid.addView(micLevel, ll);
-        page.addView(mid, Ui.lp(0, MATCH, 1f));
-
-        LinearLayout side = Ui.card(this);
-        side.addView(Ui.text(this, "Options", 20f, Ui.TXT, true));
-        latchBtn = Ui.button(this, "", Ui.RAISE, Ui.TXT, () -> {
-            if (latched) {
-                latched = false;
-                h.removeCallbacks(latchOff);
-                mic.stop();
-                setStatus("Live mic off.");
-            } else if (startMic()) {
-                latched = true;
-                h.removeCallbacks(latchOff);
-                h.postDelayed(latchOff, LATCH_LIMIT_MS);
-            }
-        });
-        side.addView(latchBtn, Ui.lp(this, MATCH, WRAP, 0, 6));
-        final TextView boostBtn = Ui.button(this, "", Ui.RAISE, Ui.TXT, null);
-        boostBtn.setText(micBoost ? "Voice boost: on" : "Voice boost: off");
-        boostBtn.setOnClickListener(v -> {
-            micBoost = !micBoost;
-            boostBtn.setText(micBoost ? "Voice boost: on" : "Voice boost: off");
-            applyMicGain();
-        });
-        side.addView(boostBtn, Ui.lp(this, MATCH, WRAP, 0, 6));
-        TextView note = Ui.text(this, "Your voice goes from the cabin microphone to the outside speaker "
-                + "with a short delay. Loudness follows the volume slider. Latch stays on for 30 seconds. "
-                + "With windows open the speaker can feed back into the microphone, so turn the volume "
-                + "down if it squeals.", 14f, Ui.DIM, false);
-        note.setPadding(Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6), 0);
-        side.addView(note);
-        page.addView(side, Ui.lp(Ui.dp(this, 360), MATCH, 0));
-        refreshMicState();
-        return page;
-    }
-
-    private void refreshMicState() {
-        if (micState != null) {
-            micState.setText(mic.running() ? "Live to the outside speaker" : "Microphone is off");
-            micState.setTextColor(mic.running() ? Ui.OUT : Ui.DIM);
-        }
-        if (latchBtn != null) {
-            latchBtn.setText(latched && mic.running() ? "Latch: on (tap to stop)" : "Latch: off (tap to stay on)");
-        }
-    }
-
-    private void applyMicGain() {
-        mic.gain = Player.gainPercent() / 100.0 * (micBoost ? 2.5 : 1.0);
-    }
-
-    private boolean startMic() {
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
-            setStatus("Allow microphone access, then try again.");
-            return false;
-        }
-        AudioDeviceInfo dev = audio.outer();
-        if (dev == null) {
-            setStatus("Outside speaker not found on this car. Setup lists the audio outputs it does have.");
-            return false;
-        }
-        playSeq++;
-        Player.stop();
-        applyMicGain();
-        mic.start(dev);
-        setStatus("Live mic on.");
-        return true;
-    }
-
-    private void stopMic() {
-        latched = false;
-        h.removeCallbacks(latchOff);
-        mic.stop();
-    }
-
-    // ---------------------------------------------------------------- whoopee
-
-    private static final String[] SEATS = {"Whole cabin", "Driver", "Front passenger", "Rear left", "Rear right"};
-    private int fartSeat;
-    private int fartDelaySec;
-    private final java.util.Random random = new java.util.Random();
-
-    private View buildWhoopee() {
-        LinearLayout page = Ui.col(this);
-        int p = Ui.dp(this, 20);
-        page.setPadding(p, Ui.dp(this, 14), p, 0);
-
-        LinearLayout delayRow = Ui.row(this);
-        delayRow.addView(Ui.text(this, "Delay", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 56), WRAP, 0, 6));
-        final int[] delays = {0, 5, 10, 30};
-        for (final int dsec : delays) {
-            boolean on = fartDelaySec == dsec;
-            delayRow.addView(Ui.button(this, dsec == 0 ? "None" : dsec + " s", on ? Ui.TXT : Ui.SURF,
-                    on ? Ui.BG : Ui.DIM, () -> {
-                        fartDelaySec = dsec;
-                        showPage(P_WHOOPEE);
-                    }), Ui.lp(this, WRAP, WRAP, 0, 4));
-        }
-        page.addView(delayRow, Ui.lp(MATCH, WRAP, 0));
-
-        ScrollView sv = new ScrollView(this);
-        LinearLayout grid = Ui.col(this);
-        final List<Sound> farts = new ArrayList<>();
-        for (Sound u : allSounds()) {
-            if ("Whoopee".equals(u.category)) {
-                farts.add(u);
-            }
-        }
-        if (farts.isEmpty()) {
-            TextView none = Ui.text(this, "No Whoopee sounds yet. On the Sounds page tap Add sounds and file "
-                    + "them under Whoopee, or put them in a Whoopee folder inside your zip.", 16f, Ui.DIM, false);
-            none.setPadding(Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 8), 0);
-            grid.addView(none);
-        } else {
-            final int perRow = 3;
-            LinearLayout rowView = null;
-            for (int i = 0; i <= farts.size(); i++) {
-                if (i % perRow == 0) {
-                    rowView = new LinearLayout(this);
-                    rowView.setOrientation(LinearLayout.HORIZONTAL);
-                    grid.addView(rowView, Ui.lp(MATCH, WRAP, 0));
-                }
-                final int idx = i - 1;
-                TextView b = Ui.text(this, idx < 0 ? "Surprise me" : farts.get(idx).label, 19f,
-                        idx < 0 ? Ui.BG : Ui.TXT, true);
-                b.setGravity(Gravity.CENTER);
-                b.setBackground(Ui.box(this, idx < 0 ? Ui.OUT : Ui.SURF, idx < 0 ? 0 : Ui.LINE, 18));
-                b.setClickable(true);
-                b.setFocusable(true);
-                b.setOnClickListener(v -> queueFart(farts.get(idx < 0 ? random.nextInt(farts.size()) : idx)));
-                rowView.addView(b, Ui.lp(this, 0, Ui.dp(this, 104), 1f, 6));
-            }
-            for (int i = (farts.size() + 1) % perRow; i != 0 && i < perRow; i++) {
-                rowView.addView(new View(this), Ui.lp(this, 0, Ui.dp(this, 104), 1f, 6));
-            }
-        }
-        sv.addView(grid);
-        page.addView(sv, Ui.lp(MATCH, 0, 1f));
-        TextView note = Ui.text(this, "Always plays inside the cabin. Each seat uses one channel of a surround "
-                + "stream on the main cabin speakers; how well it separates depends on the car's amplifier.", 13f, Ui.DIM, false);
-        note.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), 0);
-        page.addView(note, Ui.lp(MATCH, WRAP, 0));
-
-        // Seat picker drawn as the car from above, nose at the top. Right-hand drive.
-        LinearLayout left = Ui.col(this);
-        left.setPadding(Ui.dp(this, 20), Ui.dp(this, 14), 0, Ui.dp(this, 10));
-        LinearLayout car = Ui.col(this);
-        car.setBackground(new CarDrawable(this));
-        int cp = Ui.dp(this, 44);
-        car.setPadding(cp, 0, cp, 0);
-        TextView front = Ui.text(this, "FRONT", 12f, Ui.DIM, true);
-        front.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
-        front.setPadding(0, 0, 0, Ui.dp(this, 4));
-        car.addView(front, Ui.lp(MATCH, 0, 0.31f));
-        LinearLayout frontRow = new LinearLayout(this);
-        frontRow.addView(seatButton("Front\npassenger", 2), Ui.lp(this, 0, MATCH, 1f, 5));
-        frontRow.addView(seatButton("Driver", 1), Ui.lp(this, 0, MATCH, 1f, 5));
-        car.addView(frontRow, Ui.lp(MATCH, 0, 0.24f));
-        LinearLayout rearRow = new LinearLayout(this);
-        rearRow.addView(seatButton("Rear\nleft", 3), Ui.lp(this, 0, MATCH, 1f, 5));
-        rearRow.addView(seatButton("Rear\nright", 4), Ui.lp(this, 0, MATCH, 1f, 5));
-        car.addView(rearRow, Ui.lp(MATCH, 0, 0.24f));
-        car.addView(new View(this), Ui.lp(MATCH, 0, 0.21f));
-        left.addView(car, Ui.lp(MATCH, 0, 1f));
-        boolean all = fartSeat == 0;
-        left.addView(Ui.button(this, "Whole cabin", all ? Ui.CAB : Ui.SURF, all ? Ui.BG : Ui.DIM, () -> {
-            fartSeat = 0;
-            showPage(P_WHOOPEE);
-        }), Ui.lp(this, MATCH, WRAP, 0, 6));
-
-        LinearLayout outer = new LinearLayout(this);
-        outer.setOrientation(LinearLayout.HORIZONTAL);
-        outer.addView(left, Ui.lp(Ui.dp(this, 300), MATCH, 0));
-        outer.addView(page, Ui.lp(0, MATCH, 1f));
-        return outer;
-    }
-
-    private TextView seatButton(String label, final int seat) {
-        boolean on = fartSeat == seat;
-        TextView b = Ui.text(this, label, 15f, on ? Ui.BG : Ui.TXT, true);
-        b.setGravity(Gravity.CENTER);
-        b.setBackground(Ui.box(this, on ? Ui.CAB : Ui.RAISE, on ? 0 : Ui.LINE, 16));
-        b.setClickable(true);
-        b.setFocusable(true);
-        b.setOnClickListener(v -> {
-            fartSeat = seat;
-            showPage(P_WHOOPEE);
-        });
-        return b;
-    }
-
-    private void queueFart(final Sound s) {
-        final int seat = fartSeat;
-        if (fartDelaySec <= 0) {
-            playFart(s, seat);
-            return;
-        }
-        setStatus("Armed. Going off in " + fartDelaySec + " seconds.");
-        h.postDelayed(() -> playFart(s, seat), fartDelaySec * 1000L);
-    }
-
-    /**
-     * Every seat goes through the main cabin channel, the only one confirmed to make sound
-     * for this. Seats are separated by sending the sound on a single channel of a 5.1
-     * stream (right-hand drive: driver is front right).
-     */
-    private void playFart(final Sound s, int seat) {
-        AudioDeviceInfo dev = audio.mediaBus();
-        if (dev == null) {
-            dev = audio.inner();
-        }
-        stopMic();
-        final int token = ++playSeq;
-        setStatus(s.label + ": " + SEATS[seat] + ".");
-        Player.Cb cb = (ok, msg) -> runOnUiThread(() -> {
-            if (token == playSeq && !ok) {
-                setStatus("Could not play " + s.label + ". " + ascii(msg));
-            }
-        });
-        if (seat == 0) {
-            Player.play(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, true, 0f, cb);
-        } else {
-            int channel = seat == 1 ? Player.FRONT_RIGHT : seat == 2 ? Player.FRONT_LEFT
-                    : seat == 3 ? Player.BACK_LEFT : Player.BACK_RIGHT;
-            Player.playAtSeat(this, s.asset, s.file, dev, AudioAttributes.USAGE_MEDIA, channel, cb);
-        }
-    }
-
     // ----------------------------------------------------------------- widget
 
     /** Restarts the floating widget so a changed setting takes effect, then redraws this page. */
@@ -1526,7 +1275,6 @@ public class HomeActivity extends Activity {
             for (int k = 0; k < 3; k++) {
                 final int side = k - 1;
                 r.addView(Ui.button(this, sideNames[k], Ui.RAISE, Ui.TXT, () -> {
-                    stopMic();
                     final int token = ++playSeq;
                     setStatus("Test tone on " + addr + " (" + sideNames[side + 1].toLowerCase() + ").");
                     Player.play(this, "test/tone.wav", null, d, AudioAttributes.USAGE_MEDIA, true, side,

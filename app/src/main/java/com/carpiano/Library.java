@@ -74,6 +74,30 @@ final class Library {
         return PALETTE.clone();
     }
 
+    static void clearColor(Context c, String group) {
+        c.getSharedPreferences("group_colors", Context.MODE_PRIVATE).edit().remove(group).apply();
+    }
+
+    /** Renames a sound's file and carries its group and favourite setting across. */
+    static File rename(Context c, File f, String newLabel) {
+        String n = f.getName();
+        int dot = n.lastIndexOf('.');
+        String ext = dot > 0 ? n.substring(dot) : "";
+        File dst = new File(dir(c), newLabel + ext);
+        for (int k = 2; dst.exists(); k++) {
+            dst = new File(dir(c), newLabel + " " + k + ext);
+        }
+        String group = groupOf(c, f);
+        boolean fav = isFav(c, f);
+        if (!f.renameTo(dst)) {
+            return null;
+        }
+        c.getSharedPreferences("groups", Context.MODE_PRIVATE).edit().remove(n).putString(dst.getName(), group).apply();
+        setFav(c, f, false);
+        setFav(c, dst, fav);
+        return dst;
+    }
+
     static void setColor(Context c, String group, int color) {
         c.getSharedPreferences("group_colors", Context.MODE_PRIVATE).edit().putInt(group, color).apply();
     }

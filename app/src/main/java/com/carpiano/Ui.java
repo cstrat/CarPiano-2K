@@ -25,6 +25,14 @@ final class Ui {
     private Ui() {
     }
 
+    /** Mixes a colour into a base colour; amount 0 is all base, 1 is all colour. */
+    static int blend(int color, int base, float amount) {
+        int r = Math.round(android.graphics.Color.red(color) * amount + android.graphics.Color.red(base) * (1 - amount));
+        int g = Math.round(android.graphics.Color.green(color) * amount + android.graphics.Color.green(base) * (1 - amount));
+        int b = Math.round(android.graphics.Color.blue(color) * amount + android.graphics.Color.blue(base) * (1 - amount));
+        return android.graphics.Color.rgb(r, g, b);
+    }
+
     static int dp(Context c, int v) {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v,
                 c.getResources().getDisplayMetrics());

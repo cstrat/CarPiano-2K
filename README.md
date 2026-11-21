@@ -6,18 +6,18 @@ CarTalk (repo name CarPiano-2K) is an English rebuild of [jlunnn/CarPiano](https
 
 ## Status
 
-| Stage | State |
-| --- | --- |
-| Automatic APK builds on GitHub | Working |
-| English home screen: Sounds, Live mic, Setup | In testing on a 7X |
-| Import your own MP3 / WAV files | In testing |
-| In-app update check and one-tap install | In testing (fixed stale download in build 13) |
-| Floating soundboard over other apps | Working on a 7X |
-| Built-in browser that saves audio downloads straight into a group | In testing |
-| Whoopee: in-cabin prank sounds, left or right, with a delay | In testing |
-| Car controls, automations, piano | Not built yet |
+Tested on an Australian-delivered Zeekr 7X.
 
-The original Cantonese screens have been removed from this fork. The audio routing and vehicle-interface code they relied on is kept.
+| Part | State |
+| --- | --- |
+| Floating widget: icon, minimal favourites panel, full board with a tab per group | Working |
+| Hold to talk from the widget (cabin mic to the outside speaker) | Working, optional |
+| Whoopee sounds placed at a seat, from the widget | Working, optional |
+| Library: import files or zips, built-in browser, groups, colours, favourites, rename | In testing |
+| In-app update check and install | In testing |
+| Setup: car scan, speaker test, last crash | Working |
+
+The app itself is the manager for the widget. The original Cantonese screens have been removed from this fork; the audio routing and vehicle-interface code they relied on is kept.
 
 ## Download
 
@@ -26,7 +26,7 @@ Every push to `main` builds an APK and publishes it under [Releases](../../relea
 ## Not built yet
 
 - Typed phrases spoken by text-to-speech.
-- Choosing which cabin microphone feeds the live mic, and which seat a Whoopee sound comes from.
+- Recording and trimming sounds in the app.
 - Sentry mode and ambient lighting toggles, and simple "when this happens, do that" automations.
 
 ## Sounds
