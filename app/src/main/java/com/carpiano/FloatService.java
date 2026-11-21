@@ -219,13 +219,18 @@ public class FloatService extends Service {
         } else {
             v = bubble();
         }
+        // Each size has its own opacity, set on the Widget page. The edge tab stays solid.
+        float alpha = docked ? 1f
+                : Math.max(20, Math.min(100, sp.getInt("float_alpha_" + mode, 100))) / 100f;
         shell.removeAllViews();
         shell.addView(v);
         if (animate) {
             v.setAlpha(0f);
             v.setScaleX(0.94f);
             v.setScaleY(0.94f);
-            v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(160).start();
+            v.animate().alpha(alpha).scaleX(1f).scaleY(1f).setDuration(160).start();
+        } else {
+            v.setAlpha(alpha);
         }
     }
 

@@ -1202,6 +1202,31 @@ public class HomeActivity extends Activity {
         size.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         c.addView(size);
 
+        final String[] stages = {"Icon", "Minimal panel", "Full board"};
+        for (int i = 0; i < stages.length; i++) {
+            final String key = "float_alpha_" + i;
+            final String stage = stages[i];
+            final int pct = Math.max(20, Math.min(100, sp.getInt(key, 100)));
+            LinearLayout op = Ui.row(this);
+            LinearLayout ot = Ui.col(this);
+            ot.addView(Ui.text(this, stage + " opacity: " + pct + "%", 18f, Ui.TXT, true));
+            if (i == 0) {
+                ot.addView(Ui.text(this, "Lower values let more of the screen behind show through.",
+                        14f, Ui.DIM, false));
+            }
+            op.addView(ot, Ui.lp(0, WRAP, 1f));
+            op.addView(Ui.button(this, "Less", Ui.RAISE, Ui.TXT, () -> {
+                sp.edit().putInt(key, Math.max(20, pct - 10)).apply();
+                applyWidget(stage + " opacity set to " + Math.max(20, pct - 10) + "%.");
+            }), Ui.lp(this, WRAP, WRAP, 0, 4));
+            op.addView(Ui.button(this, "More", Ui.RAISE, Ui.TXT, () -> {
+                sp.edit().putInt(key, Math.min(100, pct + 10)).apply();
+                applyWidget(stage + " opacity set to " + Math.min(100, pct + 10) + "%.");
+            }), Ui.lp(this, WRAP, WRAP, 0, 4));
+            op.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+            c.addView(op);
+        }
+
         c.addView(widgetRow("Position", "Lost it off screen? This puts it back near the top left.",
                 "Reset", false, () -> {
                     sp.edit().putInt("float_x", Ui.dp(this, 40)).putInt("float_y", Ui.dp(this, 160))
