@@ -1179,53 +1179,54 @@ public class HomeActivity extends Activity {
                 }));
 
         final boolean whoopee = sp.getBoolean("float_whoopee", false);
-        c.addView(widgetRow("Whoopee sounds", "Shows the Whoopee group and a seat picker in the widget. "
-                + "These always play inside the cabin.", whoopee ? "On" : "Off", whoopee, () -> {
+        c.addView(widgetRow("Whoopee sounds", "Shows the Whoopee group in the widget. With Cabin selected you "
+                + "choose the seat; with Outside they play through the outside speaker.", whoopee ? "On" : "Off", whoopee, () -> {
                     sp.edit().putBoolean("float_whoopee", !whoopee).apply();
                     applyWidget(whoopee ? "Whoopee removed from the widget." : "Whoopee added to the widget.");
                 }));
 
-        final float scale = Math.max(0.8f, Math.min(2.2f, sp.getFloat("float_scale", 1.25f)));
-        LinearLayout size = Ui.row(this);
-        LinearLayout st = Ui.col(this);
-        st.addView(Ui.text(this, "Size: " + Math.round(scale * 100) + "%", 18f, Ui.TXT, true));
-        st.addView(Ui.text(this, "You can also pinch the widget with two fingers.", 14f, Ui.DIM, false));
-        size.addView(st, Ui.lp(0, WRAP, 1f));
-        size.addView(Ui.button(this, "Smaller", Ui.RAISE, Ui.TXT, () -> {
-            sp.edit().putFloat("float_scale", Math.max(0.8f, scale - 0.15f)).apply();
-            applyWidget("Widget made smaller.");
-        }), Ui.lp(this, WRAP, WRAP, 0, 4));
-        size.addView(Ui.button(this, "Bigger", Ui.RAISE, Ui.TXT, () -> {
-            sp.edit().putFloat("float_scale", Math.min(2.2f, scale + 0.15f)).apply();
-            applyWidget("Widget made bigger.");
-        }), Ui.lp(this, WRAP, WRAP, 0, 4));
-        size.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
-        c.addView(size);
-
         final String[] stages = {"Icon", "Minimal panel", "Full board"};
+        final float baseScale = sp.getFloat("float_scale", 1.25f);
         for (int i = 0; i < stages.length; i++) {
-            final String key = "float_alpha_" + i;
             final String stage = stages[i];
-            final int pct = Math.max(20, Math.min(100, sp.getInt(key, 100)));
+            final String sizeKey = "float_scale_" + i;
+            final String alphaKey = "float_alpha_" + i;
+            final float scale = Math.max(0.5f, Math.min(2.5f, sp.getFloat(sizeKey, baseScale)));
+            final int pct = Math.max(20, Math.min(100, sp.getInt(alphaKey, 100)));
+
+            TextView head = Ui.text(this, stage, 18f, Ui.TXT, true);
+            head.setPadding(0, Ui.dp(this, 14), 0, 0);
+            c.addView(head);
+
+            LinearLayout size = Ui.row(this);
+            size.addView(Ui.text(this, "Size " + Math.round(scale * 100) + "%", 15f, Ui.DIM, false),
+                    Ui.lp(0, WRAP, 1f));
+            size.addView(Ui.button(this, "Smaller", Ui.RAISE, Ui.TXT, () -> {
+                sp.edit().putFloat(sizeKey, Math.max(0.5f, scale - 0.15f)).apply();
+                applyWidget(stage + " made smaller.");
+            }), Ui.lp(this, WRAP, WRAP, 0, 4));
+            size.addView(Ui.button(this, "Bigger", Ui.RAISE, Ui.TXT, () -> {
+                sp.edit().putFloat(sizeKey, Math.min(2.5f, scale + 0.15f)).apply();
+                applyWidget(stage + " made bigger.");
+            }), Ui.lp(this, WRAP, WRAP, 0, 4));
+            c.addView(size);
+
             LinearLayout op = Ui.row(this);
-            LinearLayout ot = Ui.col(this);
-            ot.addView(Ui.text(this, stage + " opacity: " + pct + "%", 18f, Ui.TXT, true));
-            if (i == 0) {
-                ot.addView(Ui.text(this, "Lower values let more of the screen behind show through.",
-                        14f, Ui.DIM, false));
-            }
-            op.addView(ot, Ui.lp(0, WRAP, 1f));
+            op.addView(Ui.text(this, "Opacity " + pct + "%", 15f, Ui.DIM, false), Ui.lp(0, WRAP, 1f));
             op.addView(Ui.button(this, "Less", Ui.RAISE, Ui.TXT, () -> {
-                sp.edit().putInt(key, Math.max(20, pct - 10)).apply();
+                sp.edit().putInt(alphaKey, Math.max(20, pct - 10)).apply();
                 applyWidget(stage + " opacity set to " + Math.max(20, pct - 10) + "%.");
             }), Ui.lp(this, WRAP, WRAP, 0, 4));
             op.addView(Ui.button(this, "More", Ui.RAISE, Ui.TXT, () -> {
-                sp.edit().putInt(key, Math.min(100, pct + 10)).apply();
+                sp.edit().putInt(alphaKey, Math.min(100, pct + 10)).apply();
                 applyWidget(stage + " opacity set to " + Math.min(100, pct + 10) + "%.");
             }), Ui.lp(this, WRAP, WRAP, 0, 4));
-            op.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
             c.addView(op);
         }
+        TextView pinch = Ui.text(this, "Pinching the widget with two fingers resizes whichever size is showing.",
+                14f, Ui.DIM, false);
+        pinch.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        c.addView(pinch);
 
         c.addView(widgetRow("Position", "Lost it off screen? This puts it back near the top left.",
                 "Reset", false, () -> {

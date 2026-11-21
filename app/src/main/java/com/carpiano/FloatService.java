@@ -115,7 +115,6 @@ public class FloatService extends Service {
 
             audio = new AudioOut(this);
             sp = getSharedPreferences("piano", MODE_PRIVATE);
-            scale = Math.max(0.8f, Math.min(2.2f, sp.getFloat("float_scale", 1.25f)));
             Player.setGainPercent(sp.getInt("vol_pct", 60));
             wm = (WindowManager) getSystemService(WINDOW_SERVICE);
             lp = new WindowManager.LayoutParams(WRAP, WRAP,
@@ -185,9 +184,14 @@ public class FloatService extends Service {
         }
     }
 
+    /** Each size (icon, minimal, full) keeps its own scale. */
+    private float scaleFor(int m) {
+        float base = sp.getFloat("float_scale", 1.25f);
+        return Math.max(0.5f, Math.min(2.5f, sp.getFloat("float_scale_" + m, base)));
+    }
+
     private void setScale(float v) {
-        scale = Math.max(0.8f, Math.min(2.2f, v));
-        sp.edit().putFloat("float_scale", scale).apply();
+        sp.edit().putFloat("float_scale_" + mode, Math.max(0.5f, Math.min(2.5f, v))).apply();
         render(false);
     }
 
@@ -203,6 +207,7 @@ public class FloatService extends Service {
     }
 
     private void render(boolean animate) {
+        scale = scaleFor(docked ? MINI : mode);
         pads.clear();
         gridHost = null;
         bottomHost = null;
@@ -283,6 +288,7 @@ public class FloatService extends Service {
     private void undock() {
         docked = false;
         mode = MINI;
+        scale = scaleFor(MINI);
         lp.x = dockLeft ? Ui.dp(this, 12) : Math.max(0, screenW() - d(68) - Ui.dp(this, 12));
         sp.edit().putBoolean("float_docked", false).putInt("float_x", lp.x).apply();
         render(true);
@@ -636,8 +642,9 @@ public class FloatService extends Service {
             markPlaying();
             return;
         }
-        boolean whoopee = "Whoopee".equals(Library.groupOf(this, f));
-        boolean outside = !whoopee && Prefs.outer(this);
+        boolean outside = Prefs.outer(this);
+        // Whoopee sounds use the seat picker in the cabin, or the outside speaker like any other.
+        boolean whoopee = "Whoopee".equals(Library.groupOf(this, f)) && !outside;
         AudioDeviceInfo dev;
         if (whoopee) {
             dev = audio.mediaBus();
@@ -705,6 +712,9 @@ public class FloatService extends Service {
 
     private void setOutside(boolean outside) {
         Prefs.setChan(this, outside ? 3 : 0);
+        if (mode == FULL && "Whoopee".equals(tab)) {
+            refreshBottom();
+        }
         refreshTarget();
     }
 
@@ -767,14 +777,33 @@ public class FloatService extends Service {
         return b;
     }
 
-    /** Bottom of the full board: switch, volume and mic, or the seat picker on the Whoopee tab. */
+    /**
+     * Bottom of the full board: switch, volume and mic. On the Whoopee tab, with Cabin
+     * selected, a seat picker is added underneath.
+     */
     private void refreshBottom() {
         if (bottomHost == null) {
             return;
         }
         bottomHost.removeAllViews();
         seatViews.clear();
-        if ("Whoopee".equals(tab)) {
+        LinearLayout row = Ui.row(this);
+        row.addView(targetSwitch(), Ui.lp(WRAP, WRAP, 0));
+        ImageView spk = new ImageView(this);
+        spk.setImageDrawable(new IconDrawable(IconDrawable.SPEAKER, Ui.DIM));
+        LinearLayout.LayoutParams sl = Ui.lp(d(24), d(24), 0);
+        sl.leftMargin = d(12);
+        row.addView(spk, sl);
+        LinearLayout.LayoutParams vl = Ui.lp(0, d(40), 1f);
+        vl.leftMargin = d(6);
+        vl.rightMargin = d(8);
+        row.addView(new VolumeBar(), vl);
+        View m = micButton();
+        if (m != null) {
+            row.addView(m, Ui.lp(d(54), d(54), 0));
+        }
+        bottomHost.addView(row, Ui.lp(MATCH, WRAP, 0));
+        if ("Whoopee".equals(tab) && !Prefs.outer(this)) {
             HorizontalScrollView hs = new HorizontalScrollView(this);
             hs.setHorizontalScrollBarEnabled(false);
             LinearLayout seg = Ui.row(this);
@@ -791,43 +820,64 @@ public class FloatService extends Service {
                 seg.addView(t);
             }
             hs.addView(seg);
-            bottomHost.addView(hs, Ui.lp(MATCH, WRAP, 0));
+            LinearLayout.LayoutParams hl = Ui.lp(MATCH, WRAP, 0);
+            hl.topMargin = d(8);
+            bottomHost.addView(hs, hl);
             refreshSeats();
-            return;
         }
-        LinearLayout row = Ui.row(this);
-        row.addView(targetSwitch(), Ui.lp(WRAP, WRAP, 0));
-        ImageView spk = new ImageView(this);
-        spk.setImageDrawable(new IconDrawable(IconDrawable.SPEAKER, Ui.DIM));
-        LinearLayout.LayoutParams sl = Ui.lp(d(24), d(24), 0);
-        sl.leftMargin = d(12);
-        row.addView(spk, sl);
-        SeekBar vol = new SeekBar(this);
-        vol.setMax(100);
-        vol.setProgress(Player.gainPercent());
-        vol.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar bar, int v, boolean fromUser) {
-                Player.setGainPercent(v);
-                mic.gain = v / 100.0 * 2.5;
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar bar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar bar) {
-                sp.edit().putInt("vol_pct", bar.getProgress()).apply();
-            }
-        });
-        row.addView(vol, Ui.lp(0, d(44), 1f));
-        View m = micButton();
-        if (m != null) {
-            row.addView(m, Ui.lp(d(54), d(54), 0));
-        }
-        bottomHost.addView(row, Ui.lp(MATCH, WRAP, 0));
         refreshTarget();
+    }
+
+    /**
+     * Volume slider drawn by the widget itself, so the track and thumb scale with the
+     * widget. The system slider kept a full-size thumb and lost its track when small.
+     */
+    private final class VolumeBar extends View {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF rect = new android.graphics.RectF();
+        private int value = Player.gainPercent();
+
+        VolumeBar() {
+            super(FloatService.this);
+        }
+
+        @Override
+        protected void onDraw(android.graphics.Canvas c) {
+            float w = getWidth();
+            float hgt = getHeight();
+            float r = hgt * 0.30f;
+            float t = hgt * 0.20f;
+            float x0 = r;
+            float x1 = Math.max(x0 + 1, w - r);
+            float cy = hgt / 2f;
+            float x = x0 + (x1 - x0) * value / 100f;
+            paint.setColor(Ui.LINE);
+            rect.set(x0, cy - t / 2, x1, cy + t / 2);
+            c.drawRoundRect(rect, t / 2, t / 2, paint);
+            paint.setColor(Ui.TXT);
+            rect.set(x0, cy - t / 2, x, cy + t / 2);
+            c.drawRoundRect(rect, t / 2, t / 2, paint);
+            c.drawCircle(x, cy, r, paint);
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent e) {
+            int a = e.getActionMasked();
+            if (a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_MOVE) {
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                }
+                float r = getHeight() * 0.30f;
+                float span = Math.max(1f, getWidth() - 2 * r);
+                value = Math.max(0, Math.min(100, Math.round((e.getX() - r) * 100f / span)));
+                Player.setGainPercent(value);
+                mic.gain = value / 100.0 * 2.5;
+                invalidate();
+            } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
+                sp.edit().putInt("vol_pct", value).apply();
+            }
+            return true;
+        }
     }
 
     private void refreshSeats() {
