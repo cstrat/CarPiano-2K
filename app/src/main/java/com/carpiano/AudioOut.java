@@ -169,7 +169,18 @@ public class AudioOut {
     }
 
     /** 車外喇叭（已實測有聲嘅一條）。 */
+    /** The outside speaker: the channel chosen in Setup if there is one, otherwise the default. */
     public AudioDeviceInfo outer() {
+        try {
+            String chosen = ctx.getSharedPreferences("piano", Context.MODE_PRIVATE).getString("outer_addr", "");
+            if (chosen != null && !chosen.isEmpty()) {
+                AudioDeviceInfo d = byAddr(chosen);
+                if (d != null) {
+                    return d;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
         return byAddr(OUTER_BUS);
     }
 

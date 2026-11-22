@@ -35,6 +35,30 @@ final class Player {
     /** Bumped to stop whatever is playing. */
     private static volatile int gen;
     private static volatile int gainPct = 60;
+    /** Extra gain for the outside speaker, shaped by a soft limiter. 1.0 is off. */
+    static volatile double outsideBoost = 1.0;
+    /** Send the sound on every channel the outside speaker's bus offers, not only the first two. */
+    static volatile boolean outsideAllChannels;
+
+    static final double[] BOOST_LEVELS = {1.0, 2.5, 5.0};
+    static final String[] BOOST_NAMES = {"Normal", "Loud", "Max"};
+
+    /** Reads the outside loudness settings saved by the Setup page. */
+    static void loadOutside(Context c) {
+        android.content.SharedPreferences p = c.getSharedPreferences("piano", Context.MODE_PRIVATE);
+        int level = Math.max(0, Math.min(BOOST_LEVELS.length - 1, p.getInt("out_boost", 0)));
+        outsideBoost = BOOST_LEVELS[level];
+        outsideAllChannels = p.getBoolean("out_allch", false);
+    }
+
+    static boolean isOutside(AudioDeviceInfo dev) {
+        return dev != null && dev.getAddress() != null && dev.getAddress().toUpperCase().contains("OUTER");
+    }
+
+    /** Soft limiter: louder without the harsh crackle of hard clipping. */
+    static double limit(double v) {
+        return 32767.0 * Math.tanh(v / 32767.0);
+    }
 
     private Player() {
     }
@@ -111,35 +135,78 @@ final class Player {
         final int inCh;
         final int outCh;
         final int seat;
+        final boolean fan;
+        final double boost;
         final double gl;
         final double gr;
 
         Out(int rate, int channels, AudioDeviceInfo dev, int usage, int my, boolean stereo, float pan, int seat) {
             this.my = my;
             inCh = channels >= 2 ? 2 : 1;
+            boolean outside = isOutside(dev);
+            boost = outside ? outsideBoost : 1.0;
             AudioTrack t = null;
             int size = 0;
-            if (seat >= 0) {
+            int wide = 0;
+            if (outside && outsideAllChannels && seat < 0) {
+                // Fill every channel the bus reports, in case it drives more than two speakers.
+                int n = 0;
+                for (int c : dev.getChannelCounts()) {
+                    n = Math.max(n, c);
+                }
+                if (n > 2 && n <= 16) {
+                    try {
+                        size = Math.max(rate * n * 2 / 4, 16384);
+                        t = new AudioTrack.Builder()
+                                .setAudioAttributes(new AudioAttributes.Builder()
+                                        .setUsage(usage)
+                                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                        .build())
+                                .setAudioFormat(new AudioFormat.Builder()
+                                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                        .setSampleRate(rate)
+                                        .setChannelIndexMask((1 << n) - 1)
+                                        .build())
+                                .setBufferSizeInBytes(size)
+                                .setTransferMode(AudioTrack.MODE_STREAM)
+                                .build();
+                        wide = n;
+                    } catch (Throwable ignored) {
+                        t = null;
+                    }
+                }
+            }
+            boolean six = false;
+            if (t == null && seat >= 0) {
                 try {
                     int min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_5POINT1,
                             AudioFormat.ENCODING_PCM_16BIT);
                     if (min > 0) {
                         size = Math.max(min * 2, 24576);
                         t = build(rate, AudioFormat.CHANNEL_OUT_5POINT1, size, usage);
+                        six = true;
                     }
                 } catch (Throwable ignored) {
                     t = null;
                 }
             }
-            if (t != null) {
+            if (t != null && wide > 0) {
+                outCh = wide;
+                this.seat = -1;
+                fan = true;
+                gl = 1.0;
+                gr = 1.0;
+            } else if (t != null && six) {
                 outCh = 6;
                 this.seat = seat;
+                fan = false;
                 gl = 1.0;
                 gr = 1.0;
             } else {
-                // No 5.1: place it left or right on a stereo stream instead.
+                // Plain mono or stereo; a seat request falls back to left or right.
                 float p = seat >= 0 ? (seat == FRONT_LEFT || seat == BACK_LEFT ? -1f : 1f) : pan;
                 this.seat = -1;
+                fan = false;
                 outCh = stereo ? 2 : inCh;
                 gl = stereo && p > 0 ? 1.0 - p : 1.0;
                 gr = stereo && p < 0 ? 1.0 + p : 1.0;
@@ -193,7 +260,28 @@ final class Player {
             byte[] o;
             int oo;
             int ol;
-            if (outCh == 6) {
+            if (boost > 1.0) {
+                g *= boost;
+            }
+            if (fan) {
+                int frameBytes = inCh * 2;
+                int frames = len / frameBytes;
+                int outFrame = outCh * 2;
+                o = new byte[frames * outFrame];
+                for (int f = 0; f < frames; f++) {
+                    int at = off + f * frameBytes;
+                    double v = (short) ((b[at] & 0xFF) | (b[at + 1] << 8));
+                    if (inCh == 2) {
+                        v = (v + (short) ((b[at + 2] & 0xFF) | (b[at + 3] << 8))) / 2.0;
+                    }
+                    double y = boost > 1.0 ? limit(v * g) : v * g;
+                    for (int ch = 0; ch < outCh; ch++) {
+                        put(o, f * outFrame + ch * 2, y);
+                    }
+                }
+                oo = 0;
+                ol = o.length;
+            } else if (outCh == 6) {
                 int frameBytes = inCh * 2;
                 int frames = len / frameBytes;
                 o = new byte[frames * 12];
@@ -211,8 +299,8 @@ final class Player {
                 o = new byte[len * 2];
                 for (int i = 0; i + 1 < len; i += 2) {
                     int s = (short) ((b[off + i] & 0xFF) | (b[off + i + 1] << 8));
-                    put(o, i * 2, s * g * gl);
-                    put(o, i * 2 + 2, s * g * gr);
+                    put(o, i * 2, boost > 1.0 ? limit(s * g * gl) : s * g * gl);
+                    put(o, i * 2 + 2, boost > 1.0 ? limit(s * g * gr) : s * g * gr);
                 }
                 oo = 0;
                 ol = len * 2;
@@ -220,7 +308,7 @@ final class Player {
                 for (int i = 0; i + 1 < len; i += 2) {
                     int s = (short) ((b[off + i] & 0xFF) | (b[off + i + 1] << 8));
                     double k = outCh == 2 ? ((i / 2) % 2 == 0 ? gl : gr) : 1.0;
-                    put(b, off + i, s * g * k);
+                    put(b, off + i, boost > 1.0 ? limit(s * g * k) : s * g * k);
                 }
                 o = b;
                 oo = off;

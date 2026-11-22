@@ -76,10 +76,11 @@ final class LiveMic {
                     if (n < 0) {
                         throw new IllegalStateException("microphone read failed (" + n + ")");
                     }
-                    double g = gain;
+                    double boost = Player.isOutside(out) ? Player.outsideBoost : 1.0;
+                    double g = gain * boost;
                     int peak = 0;
                     for (int i = 0; i < n; i++) {
-                        int v = (int) Math.round(buf[i] * g);
+                        int v = (int) Math.round(boost > 1.0 ? Player.limit(buf[i] * g) : buf[i] * g);
                         if (v > 32767) {
                             v = 32767;
                         } else if (v < -32768) {

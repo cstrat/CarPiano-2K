@@ -116,6 +116,7 @@ public class FloatService extends Service {
             audio = new AudioOut(this);
             sp = getSharedPreferences("piano", MODE_PRIVATE);
             Player.setGainPercent(sp.getInt("vol_pct", 60));
+            Player.loadOutside(this);
             wm = (WindowManager) getSystemService(WINDOW_SERVICE);
             lp = new WindowManager.LayoutParams(WRAP, WRAP,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,

@@ -91,6 +91,7 @@ public class HomeActivity extends Activity {
             sp = getSharedPreferences("piano", MODE_PRIVATE);
             Prefs.repair(this);
             Player.setGainPercent(sp.getInt("vol_pct", 60));
+            Player.loadOutside(this);
             setContentView(buildRoot());
             showPage(P_SOUNDS);
             checkUpdate(false);
@@ -1285,6 +1286,84 @@ public class HomeActivity extends Activity {
                 Ui.lp(this, WRAP, WRAP, 0, 4));
         scan.addView(sb);
         page.addView(scan, Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        LinearLayout out = Ui.card(this);
+        out.addView(Ui.text(this, "Outside speaker", 20f, Ui.TXT, true));
+        out.addView(Ui.text(this, "Which channel Outside uses and how hard it is driven. Loud and Max add "
+                + "gain with a limiter, so they get louder but rougher. Use Test to compare from outside the car.",
+                15f, Ui.DIM, false));
+
+        final String chosen = sp.getString("outer_addr", "");
+        LinearLayout chRow = Ui.row(this);
+        chRow.addView(Ui.text(this, "Channel", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 90), WRAP, 0, 4));
+        HorizontalScrollView chScroll = new HorizontalScrollView(this);
+        chScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout chBtns = Ui.row(this);
+        boolean isDefault = chosen == null || chosen.isEmpty();
+        chBtns.addView(Ui.button(this, "Default", isDefault ? Ui.OUT : Ui.RAISE, isDefault ? Ui.BG : Ui.TXT, () -> {
+            sp.edit().remove("outer_addr").apply();
+            setStatus("Outside uses the default channel (" + AudioOut.OUTER_BUS + ").");
+            showPage(P_SETUP);
+        }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        for (AudioDeviceInfo d : audio.outputs()) {
+            final String addr = d.getAddress();
+            if (addr == null || !addr.toUpperCase().contains("OUTER")) {
+                continue;
+            }
+            boolean on = addr.equals(chosen);
+            chBtns.addView(Ui.button(this, addr, on ? Ui.OUT : Ui.RAISE, on ? Ui.BG : Ui.TXT, () -> {
+                sp.edit().putString("outer_addr", addr).apply();
+                setStatus("Outside now uses " + addr + ".");
+                showPage(P_SETUP);
+            }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        }
+        chScroll.addView(chBtns);
+        chRow.addView(chScroll, Ui.lp(0, WRAP, 1f));
+        out.addView(chRow);
+
+        final int level = Math.max(0, Math.min(Player.BOOST_NAMES.length - 1, sp.getInt("out_boost", 0)));
+        LinearLayout loud = Ui.row(this);
+        loud.addView(Ui.text(this, "Loudness", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 90), WRAP, 0, 4));
+        for (int k = 0; k < Player.BOOST_NAMES.length; k++) {
+            final int idx = k;
+            boolean on = k == level;
+            loud.addView(Ui.button(this, Player.BOOST_NAMES[k], on ? Ui.OUT : Ui.RAISE, on ? Ui.BG : Ui.TXT, () -> {
+                sp.edit().putInt("out_boost", idx).apply();
+                Player.loadOutside(this);
+                setStatus("Outside loudness: " + Player.BOOST_NAMES[idx] + ".");
+                showPage(P_SETUP);
+            }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        }
+        out.addView(loud);
+
+        final boolean allCh = sp.getBoolean("out_allch", false);
+        LinearLayout wide = Ui.row(this);
+        wide.addView(Ui.text(this, "Channels", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 90), WRAP, 0, 4));
+        wide.addView(Ui.button(this, allCh ? "Using every channel of the speaker" : "Using the first two channels only",
+                allCh ? Ui.OUT : Ui.RAISE, allCh ? Ui.BG : Ui.TXT, () -> {
+                    sp.edit().putBoolean("out_allch", !allCh).apply();
+                    Player.loadOutside(this);
+                    setStatus(allCh ? "Outside uses the first two channels." : "Outside uses every channel.");
+                    showPage(P_SETUP);
+                }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        wide.addView(Ui.button(this, "Test", Ui.TXT, Ui.BG, () -> {
+            AudioDeviceInfo dev = audio.outer();
+            if (dev == null) {
+                setStatus("No outside speaker channel found.");
+                return;
+            }
+            final int token = ++playSeq;
+            setStatus("Test tone on " + dev.getAddress() + ", loudness " + Player.BOOST_NAMES[level]
+                    + ", volume " + Player.gainPercent() + "%.");
+            Player.play(this, "test/tone.wav", null, dev, AudioAttributes.USAGE_MEDIA,
+                    (ok, msg) -> runOnUiThread(() -> {
+                        if (token == playSeq && !ok) {
+                            setStatus("The test tone could not play. " + ascii(msg));
+                        }
+                    }));
+        }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        out.addView(wide);
+        page.addView(out, Ui.lp(this, MATCH, WRAP, 0, 6));
 
         LinearLayout test = Ui.card(this);
         test.addView(Ui.text(this, "Speaker test", 20f, Ui.TXT, true));
