@@ -131,6 +131,8 @@ public class FloatService extends Service {
             render(false);
             wm.addView(shell, lp);
             running = true;
+            h.postDelayed(() -> Automations.fire(this, "widget_start"), 1500);
+            h.postDelayed(powerWatch, 3000);
         } catch (Throwable t) {
             lastError = t.getClass().getSimpleName() + ": " + t.getMessage();
             running = false;
@@ -146,6 +148,7 @@ public class FloatService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        h.removeCallbacks(powerWatch);
         mic.stop();
         try {
             if (wm != null && shell != null) {
@@ -155,6 +158,33 @@ public class FloatService extends Service {
         }
         super.onDestroy();
     }
+
+    /** Car power state as last seen: null until the first reading, so starting up fires nothing. */
+    private Boolean carOn;
+
+    /** Polls the car's power signal and fires the power on / off automations on a change. */
+    private final Runnable powerWatch = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                if (Automations.masterOn(FloatService.this)) {
+                    List<Integer> onValues = Automations.onValues(FloatService.this);
+                    int raw = CarCtl.read(FloatService.this, (int) VehicleRead.ID_IGNITION);
+                    if (!onValues.isEmpty() && raw != Integer.MIN_VALUE) {
+                        boolean on = onValues.contains(raw);
+                        if (carOn != null && on != carOn) {
+                            Automations.fire(FloatService.this, on ? "power_on" : "power_off");
+                        }
+                        carOn = on;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            if (running) {
+                h.postDelayed(this, 2000);
+            }
+        }
+    };
 
     // ---------------------------------------------------------------- helpers
 
@@ -674,7 +704,10 @@ public class FloatService extends Service {
                 markPlaying();
             }
         });
-        if (whoopee && seat != 0) {
+        int tuned = whoopee && seat != 0 ? sp.getInt("seat_bits_" + seat, 0) : 0;
+        if (tuned != 0) {
+            Player.playOnChannels(this, null, f, dev, AudioAttributes.USAGE_MEDIA, tuned, cb);
+        } else if (whoopee && seat != 0) {
             int channel = seat == 1 ? Player.FRONT_RIGHT : seat == 2 ? Player.FRONT_LEFT
                     : seat == 3 ? Player.BACK_LEFT : Player.BACK_RIGHT;
             Player.playAtSeat(this, null, f, dev, AudioAttributes.USAGE_MEDIA, channel, cb);

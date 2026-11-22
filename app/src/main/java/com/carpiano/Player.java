@@ -37,8 +37,6 @@ final class Player {
     private static volatile int gainPct = 60;
     /** Extra gain for the outside speaker, shaped by a soft limiter. 1.0 is off. */
     static volatile double outsideBoost = 1.0;
-    /** Send the sound on every channel the outside speaker's bus offers, not only the first two. */
-    static volatile boolean outsideAllChannels;
 
     static final double[] BOOST_LEVELS = {1.0, 2.5, 5.0};
     static final String[] BOOST_NAMES = {"Normal", "Loud", "Max"};
@@ -48,7 +46,6 @@ final class Player {
         android.content.SharedPreferences p = c.getSharedPreferences("piano", Context.MODE_PRIVATE);
         int level = Math.max(0, Math.min(BOOST_LEVELS.length - 1, p.getInt("out_boost", 0)));
         outsideBoost = BOOST_LEVELS[level];
-        outsideAllChannels = p.getBoolean("out_allch", false);
     }
 
     static boolean isOutside(AudioDeviceInfo dev) {
@@ -104,6 +101,20 @@ final class Player {
         play(ctx, asset, file, dev, usage, true, 0f, seatChannel, cb);
     }
 
+    /** Marks the seat argument as a set of raw channel numbers (one bit each) instead of a 5.1 position. */
+    private static final int CUSTOM = 0x10000;
+
+    /**
+     * Plays the sound on a chosen set of the output's own channels, for cars whose cabin
+     * bus exposes each speaker separately. Bit 0 is channel 1. Falls back to plain stereo
+     * if the output cannot be opened with all its channels.
+     */
+    static void playOnChannels(final Context ctx, final String asset, final File file,
+                               final AudioDeviceInfo dev, final int usage, final int channelBits,
+                               final Cb cb) {
+        play(ctx, asset, file, dev, usage, true, 0f, CUSTOM | (channelBits & 0xFFFF), cb);
+    }
+
     private static void play(final Context ctx, final String asset, final File file,
                              final AudioDeviceInfo dev, final int usage, final boolean stereo,
                              final float pan, final int seat, final Cb cb) {
@@ -136,20 +147,23 @@ final class Player {
         final int outCh;
         final int seat;
         final boolean fan;
+        final int chBits;
         final double boost;
         final double gl;
         final double gr;
 
-        Out(int rate, int channels, AudioDeviceInfo dev, int usage, int my, boolean stereo, float pan, int seat) {
+        Out(int rate, int channels, AudioDeviceInfo dev, int usage, int my, boolean stereo, float pan, int seatArg) {
             this.my = my;
+            final int bits = seatArg >= CUSTOM ? (seatArg & 0xFFFF) : 0;
+            final int seat = bits != 0 ? -1 : seatArg;
             inCh = channels >= 2 ? 2 : 1;
             boolean outside = isOutside(dev);
             boost = outside ? outsideBoost : 1.0;
             AudioTrack t = null;
             int size = 0;
             int wide = 0;
-            if (outside && outsideAllChannels && seat < 0) {
-                // Fill every channel the bus reports, in case it drives more than two speakers.
+            if (bits != 0 && dev != null) {
+                // Open the bus with all of its channels so single speakers can be addressed.
                 int n = 0;
                 for (int c : dev.getChannelCounts()) {
                     n = Math.max(n, c);
@@ -194,12 +208,14 @@ final class Player {
                 outCh = wide;
                 this.seat = -1;
                 fan = true;
+                chBits = bits;
                 gl = 1.0;
                 gr = 1.0;
             } else if (t != null && six) {
                 outCh = 6;
                 this.seat = seat;
                 fan = false;
+                chBits = 0;
                 gl = 1.0;
                 gr = 1.0;
             } else {
@@ -207,6 +223,7 @@ final class Player {
                 float p = seat >= 0 ? (seat == FRONT_LEFT || seat == BACK_LEFT ? -1f : 1f) : pan;
                 this.seat = -1;
                 fan = false;
+                chBits = 0;
                 outCh = stereo ? 2 : inCh;
                 gl = stereo && p > 0 ? 1.0 - p : 1.0;
                 gr = stereo && p < 0 ? 1.0 + p : 1.0;
@@ -276,7 +293,9 @@ final class Player {
                     }
                     double y = boost > 1.0 ? limit(v * g) : v * g;
                     for (int ch = 0; ch < outCh; ch++) {
-                        put(o, f * outFrame + ch * 2, y);
+                        if (((chBits >> ch) & 1) != 0) {
+                            put(o, f * outFrame + ch * 2, y);
+                        }
                     }
                 }
                 oo = 0;

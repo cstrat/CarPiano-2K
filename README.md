@@ -15,7 +15,8 @@ Tested on an Australian-delivered Zeekr 7X.
 | Whoopee sounds placed at a seat, from the widget | Working, optional |
 | Library: import files or zips, built-in browser, groups, colours, favourites, rename | In testing |
 | In-app update check and install | In testing |
-| Setup: car scan, speaker test, last crash | Working |
+| Automations: play a sound or switch Sentry / ambient lighting when the car powers on or off | In testing |
+| Setup: car scan, speaker test, outside loudness, seat tuning, last crash | Working |
 
 The app itself is the manager for the widget. The original Cantonese screens have been removed from this fork; the audio routing and vehicle-interface code they relied on is kept.
 
@@ -27,7 +28,7 @@ Every push to `main` builds an APK and publishes it under [Releases](../../relea
 
 - Typed phrases spoken by text-to-speech.
 - Recording and trimming sounds in the app.
-- Sentry mode and ambient lighting toggles, and simple "when this happens, do that" automations.
+- More automation triggers (gear, doors, locking), which need their signal addresses found first.
 
 ## Sounds
 

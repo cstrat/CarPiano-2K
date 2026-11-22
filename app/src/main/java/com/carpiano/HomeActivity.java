@@ -36,8 +36,8 @@ import java.util.List;
  */
 public class HomeActivity extends Activity {
 
-    private static final String[] PAGES = {"Library", "Widget", "Setup"};
-    private static final int P_SOUNDS = 0, P_WIDGET = 1, P_SETUP = 2;
+    private static final String[] PAGES = {"Library", "Widget", "Automations", "Setup"};
+    private static final int P_SOUNDS = 0, P_WIDGET = 1, P_AUTO = 2, P_SETUP = 3;
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static final int REQ_MIC = 77;
@@ -226,6 +226,8 @@ public class HomeActivity extends Activity {
             v = buildSounds();
         } else if (idx == P_WIDGET) {
             v = buildWidget();
+        } else if (idx == P_AUTO) {
+            v = buildAutomations();
         } else {
             v = buildSetup();
         }
@@ -1243,6 +1245,266 @@ public class HomeActivity extends Activity {
         return sv;
     }
 
+    // ------------------------------------------------------------ seat tuning
+
+    private static final String[] TUNE_SEATS = {"Driver", "Front passenger", "Rear left", "Rear right"};
+
+    private int cabinChannels() {
+        AudioDeviceInfo dev = audio.mediaBus();
+        int n = 0;
+        if (dev != null) {
+            for (int c : dev.getChannelCounts()) {
+                n = Math.max(n, c);
+            }
+        }
+        return Math.min(16, n);
+    }
+
+    private void testChannels(String what, int bits) {
+        AudioDeviceInfo dev = audio.mediaBus();
+        if (dev == null) {
+            setStatus("The main cabin channel was not found.");
+            return;
+        }
+        final int token = ++playSeq;
+        setStatus("Test tone: " + what + ".");
+        Player.playOnChannels(this, "test/tone.wav", null, dev, AudioAttributes.USAGE_MEDIA, bits,
+                (ok, msg) -> runOnUiThread(() -> {
+                    if (token == playSeq && !ok) {
+                        setStatus("The test tone could not play. " + ascii(msg));
+                    }
+                }));
+    }
+
+    /** Lets the user find which cabin channel is which speaker, then assign channels to seats. */
+    private View seatTuningCard() {
+        LinearLayout card = Ui.card(this);
+        card.addView(Ui.text(this, "Whoopee seat tuning", 20f, Ui.TXT, true));
+        final int n = cabinChannels();
+        if (n <= 2) {
+            card.addView(Ui.text(this, "The main cabin channel reports " + n + " channels on this car, so seats "
+                    + "cannot be tuned beyond the automatic placement.", 15f, Ui.DIM, false));
+            return card;
+        }
+        card.addView(Ui.text(this, "The cabin has " + n + " speaker channels. Step 1: tap each number and note "
+                + "where the tone comes from. Step 2: for each seat, switch on the channels nearest it. A seat "
+                + "with nothing selected keeps the automatic placement.", 15f, Ui.DIM, false));
+
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout find = Ui.row(this);
+        find.addView(Ui.text(this, "Find", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 130), WRAP, 0, 4));
+        for (int ch = 0; ch < n; ch++) {
+            final int c = ch;
+            find.addView(Ui.button(this, String.valueOf(ch + 1), Ui.RAISE, Ui.TXT,
+                    () -> testChannels("channel " + (c + 1), 1 << c)), Ui.lp(this, Ui.dp(this, 56), WRAP, 0, 3));
+        }
+        hs.addView(find);
+        card.addView(hs);
+
+        for (int seat = 1; seat <= TUNE_SEATS.length; seat++) {
+            final String key = "seat_bits_" + seat;
+            final String name = TUNE_SEATS[seat - 1];
+            final int bits = sp.getInt(key, 0);
+            HorizontalScrollView rs = new HorizontalScrollView(this);
+            rs.setHorizontalScrollBarEnabled(false);
+            LinearLayout row = Ui.row(this);
+            row.addView(Ui.text(this, name, 15f, Ui.TXT, true), Ui.lp(this, Ui.dp(this, 130), WRAP, 0, 4));
+            for (int ch = 0; ch < n; ch++) {
+                final int c = ch;
+                boolean on = ((bits >> ch) & 1) != 0;
+                row.addView(Ui.button(this, String.valueOf(ch + 1), on ? Ui.CAB : Ui.SURF, on ? Ui.BG : Ui.DIM, () -> {
+                    sp.edit().putInt(key, bits ^ (1 << c)).apply();
+                    showPage(P_SETUP);
+                }), Ui.lp(this, Ui.dp(this, 56), WRAP, 0, 3));
+            }
+            row.addView(Ui.button(this, "Test", Ui.TXT, Ui.BG, () -> {
+                if (bits == 0) {
+                    setStatus(name + " has no channels selected, so it uses the automatic placement.");
+                } else {
+                    testChannels(name, bits);
+                }
+            }), Ui.lp(this, WRAP, WRAP, 0, 6));
+            rs.addView(row);
+            card.addView(rs);
+        }
+        LinearLayout foot = Ui.row(this);
+        foot.addView(Ui.button(this, "Reset all seats to automatic", Ui.RAISE, Ui.TXT, () -> {
+            SharedPreferences.Editor e = sp.edit();
+            for (int seat = 1; seat <= TUNE_SEATS.length; seat++) {
+                e.remove("seat_bits_" + seat);
+            }
+            e.apply();
+            setStatus("Seat tuning cleared.");
+            showPage(P_SETUP);
+        }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        card.addView(foot);
+        return card;
+    }
+
+    // ------------------------------------------------------------ automations
+
+    private View buildAutomations() {
+        ScrollView sv = new ScrollView(this);
+        LinearLayout pg = Ui.col(this);
+        int p = Ui.dp(this, 14);
+        pg.setPadding(p, p, p, p);
+
+        LinearLayout c = Ui.card(this);
+        final boolean master = Automations.masterOn(this);
+        c.addView(widgetRow("Automations", "Rules run only while the floating widget is on, because the widget "
+                + "is what watches the car.", master ? "On" : "Off", master, () -> {
+                    Automations.setMaster(this, !master);
+                    showPage(P_AUTO);
+                }));
+        final boolean quiet = Automations.quietHours(this);
+        c.addView(widgetRow("Quiet hours", "Rules will not play anything outside between 9 pm and 7 am.",
+                quiet ? "On" : "Off", quiet, () -> {
+                    Automations.setQuietHours(this, !quiet);
+                    showPage(P_AUTO);
+                }));
+        if (master && !FloatService.running) {
+            c.addView(Ui.text(this, "The floating widget is off, so nothing will run. Switch it on from the "
+                    + "Widget page.", 14f, Ui.OUT, false));
+        }
+        pg.addView(c, Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        LinearLayout pw = Ui.card(this);
+        pw.addView(Ui.text(this, "Car power signal", 20f, Ui.TXT, true));
+        final int raw = CarCtl.read(this, (int) VehicleRead.ID_IGNITION);
+        List<Integer> onVals = Automations.onValues(this);
+        StringBuilder learned = new StringBuilder();
+        for (int v : onVals) {
+            learned.append(learned.length() == 0 ? "" : ", ").append("0x").append(Integer.toHexString(v).toUpperCase());
+        }
+        pw.addView(Ui.text(this, "Reading now: " + (raw == Integer.MIN_VALUE ? "not readable"
+                : "0x" + Integer.toHexString(raw).toUpperCase())
+                + "\nCounts as on: " + (onVals.isEmpty() ? "nothing taught yet" : learned.toString()),
+                15f, Ui.DIM, false));
+        pw.addView(Ui.text(this, "The power on and power off rules need to know what \u201con\u201d looks like. "
+                + "With the car on and ready to drive, tap the first button. If the reading differs in other "
+                + "on states, tap it again in each.", 14f, Ui.DIM, false));
+        LinearLayout pb = Ui.row(this);
+        pb.addView(Ui.button(this, "The car is on now", Ui.OK, Ui.BG, () -> {
+            if (raw == Integer.MIN_VALUE) {
+                setStatus("The power signal cannot be read, so it cannot be taught.");
+            } else {
+                Automations.addOnValue(this, raw);
+                setStatus("Saved 0x" + Integer.toHexString(raw).toUpperCase() + " as on.");
+            }
+            showPage(P_AUTO);
+        }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        pb.addView(Ui.button(this, "Read again", Ui.RAISE, Ui.TXT, () -> showPage(P_AUTO)),
+                Ui.lp(this, WRAP, WRAP, 0, 4));
+        pb.addView(Ui.button(this, "Forget", Ui.RAISE, Ui.TXT, () -> {
+            Automations.clearOnValues(this);
+            showPage(P_AUTO);
+        }), Ui.lp(this, WRAP, WRAP, 0, 4));
+        pw.addView(pb);
+        pg.addView(pw, Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        LinearLayout rc = Ui.card(this);
+        LinearLayout rh = Ui.row(this);
+        rh.addView(Ui.text(this, "Rules", 20f, Ui.TXT, true), Ui.lp(0, WRAP, 1f));
+        rh.addView(Ui.button(this, "New rule", Ui.TXT, Ui.BG, this::newRule), Ui.lp(this, WRAP, WRAP, 0, 4));
+        rc.addView(rh);
+        final List<Automations.Rule> rules = Automations.load(this);
+        if (rules.isEmpty()) {
+            rc.addView(Ui.text(this, "No rules yet. Tap New rule to make one, for example: when the car powers "
+                    + "on, play a welcome sound in the cabin.", 15f, Ui.DIM, false));
+        }
+        for (int i = 0; i < rules.size(); i++) {
+            final int idx = i;
+            final Automations.Rule r = rules.get(i);
+            LinearLayout row = Ui.row(this);
+            row.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+            row.addView(Ui.text(this, Automations.describe(r), 16f, r.enabled ? Ui.TXT : Ui.DIM, true),
+                    Ui.lp(0, WRAP, 1f));
+            row.addView(Ui.button(this, r.enabled ? "On" : "Off", r.enabled ? Ui.OK : Ui.RAISE,
+                    r.enabled ? Ui.BG : Ui.TXT, () -> {
+                        r.enabled = !r.enabled;
+                        Automations.save(this, rules);
+                        showPage(P_AUTO);
+                    }), Ui.lp(this, Ui.dp(this, 90), WRAP, 0, 3));
+            row.addView(Ui.button(this, "Test", Ui.RAISE, Ui.TXT, () -> {
+                setStatus("Test: " + Automations.run(this, r, true) + ".");
+                showPage(P_AUTO);
+            }), Ui.lp(this, WRAP, WRAP, 0, 3));
+            row.addView(Ui.button(this, "Delete", Ui.RAISE, Ui.TXT, () -> {
+                rules.remove(idx);
+                Automations.save(this, rules);
+                showPage(P_AUTO);
+            }), Ui.lp(this, WRAP, WRAP, 0, 3));
+            rc.addView(row);
+        }
+        TextView last = Ui.text(this, "Last run: " + Automations.lastEvent(this), 14f, Ui.DIM, false);
+        last.setPadding(0, Ui.dp(this, 10), 0, 0);
+        rc.addView(last);
+        pg.addView(rc, Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        sv.addView(pg);
+        return sv;
+    }
+
+    private static String cap(String s) {
+        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private void newRule() {
+        final Automations.Rule r = new Automations.Rule();
+        r.id = "r" + System.currentTimeMillis();
+        String[] trig = new String[Automations.TRIGGER_NAMES.length];
+        for (int i = 0; i < trig.length; i++) {
+            trig[i] = "When " + Automations.TRIGGER_NAMES[i];
+        }
+        new android.app.AlertDialog.Builder(this).setTitle("New rule: when?")
+                .setItems(trig, (d, which) -> {
+                    r.trigger = Automations.TRIGGERS[which];
+                    String[] acts = new String[Automations.ACTION_NAMES.length];
+                    for (int i = 0; i < acts.length; i++) {
+                        acts[i] = cap(Automations.ACTION_NAMES[i]);
+                    }
+                    new android.app.AlertDialog.Builder(this).setTitle("Then do what?")
+                            .setItems(acts, (d2, a) -> {
+                                r.action = Automations.ACTIONS[a];
+                                if ("play".equals(r.action)) {
+                                    pickRuleSound(r);
+                                } else {
+                                    addRule(r);
+                                }
+                            }).setNegativeButton("Cancel", null).show();
+                }).setNegativeButton("Cancel", null).show();
+    }
+
+    private void pickRuleSound(final Automations.Rule r) {
+        final List<File> files = Library.userSounds(this);
+        if (files.isEmpty()) {
+            setStatus("There are no sounds in the library to play yet.");
+            return;
+        }
+        String[] names = new String[files.size()];
+        for (int i = 0; i < names.length; i++) {
+            names[i] = Library.label(files.get(i)) + "  (" + Library.groupOf(this, files.get(i)) + ")";
+        }
+        new android.app.AlertDialog.Builder(this).setTitle("Which sound?")
+                .setItems(names, (d, which) -> {
+                    r.file = files.get(which).getName();
+                    new android.app.AlertDialog.Builder(this).setTitle("Play it where?")
+                            .setItems(new String[]{"In the cabin", "Outside"}, (d2, t) -> {
+                                r.target = t == 1 ? "outside" : "cabin";
+                                addRule(r);
+                            }).setNegativeButton("Cancel", null).show();
+                }).setNegativeButton("Cancel", null).show();
+    }
+
+    private void addRule(Automations.Rule r) {
+        List<Automations.Rule> rules = Automations.load(this);
+        rules.add(r);
+        Automations.save(this, rules);
+        setStatus("Added: " + Automations.describe(r) + ".");
+        showPage(P_AUTO);
+    }
+
     // ------------------------------------------------------------------ setup
 
     private View buildSetup() {
@@ -1334,18 +1596,7 @@ public class HomeActivity extends Activity {
                 showPage(P_SETUP);
             }), Ui.lp(this, WRAP, WRAP, 0, 3));
         }
-        out.addView(loud);
-
-        final boolean allCh = sp.getBoolean("out_allch", false);
-        LinearLayout wide = Ui.row(this);
-        wide.addView(Ui.text(this, "Channels", 15f, Ui.DIM, true), Ui.lp(this, Ui.dp(this, 90), WRAP, 0, 4));
-        wide.addView(Ui.button(this, allCh ? "Using every channel of the speaker" : "Using the first two channels only",
-                allCh ? Ui.OUT : Ui.RAISE, allCh ? Ui.BG : Ui.TXT, () -> {
-                    sp.edit().putBoolean("out_allch", !allCh).apply();
-                    Player.loadOutside(this);
-                    setStatus(allCh ? "Outside uses the first two channels." : "Outside uses every channel.");
-                    showPage(P_SETUP);
-                }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        LinearLayout wide = loud;
         wide.addView(Ui.button(this, "Test", Ui.TXT, Ui.BG, () -> {
             AudioDeviceInfo dev = audio.outer();
             if (dev == null) {
@@ -1362,8 +1613,10 @@ public class HomeActivity extends Activity {
                         }
                     }));
         }), Ui.lp(this, WRAP, WRAP, 0, 3));
-        out.addView(wide);
+        out.addView(loud);
         page.addView(out, Ui.lp(this, MATCH, WRAP, 0, 6));
+
+        page.addView(seatTuningCard(), Ui.lp(this, MATCH, WRAP, 0, 6));
 
         LinearLayout test = Ui.card(this);
         test.addView(Ui.text(this, "Speaker test", 20f, Ui.TXT, true));
