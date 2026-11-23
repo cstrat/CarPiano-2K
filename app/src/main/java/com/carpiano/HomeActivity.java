@@ -549,6 +549,14 @@ public class HomeActivity extends Activity {
 
     private android.webkit.WebView web;
 
+    /** Shortcut buttons in the browser: name, address. Plain links; nothing is fetched until tapped. */
+    private static final String[][] SOUND_SITES = {
+            {"Myinstants", "https://www.myinstants.com/en/index/au/"},
+            {"Pixabay", "https://pixabay.com/sound-effects/"},
+            {"Mixkit", "https://mixkit.co/free-sound-effects/"},
+            {"Freesound", "https://freesound.org/"},
+    };
+
     private void closeBrowser() {
         if (web != null) {
             try {
@@ -571,7 +579,7 @@ public class HomeActivity extends Activity {
 
         final android.widget.EditText address = new android.widget.EditText(this);
         address.setSingleLine(true);
-        address.setHint("Web address or search words");
+        address.setHint("Web address");
         address.setTextColor(Ui.TXT);
         address.setHintTextColor(Ui.DIM);
         address.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
@@ -607,7 +615,8 @@ public class HomeActivity extends Activity {
             } else if (t.contains(".") && !t.contains(" ")) {
                 url = "https://" + t;
             } else {
-                url = "https://duckduckgo.com/?q=" + android.net.Uri.encode(t);
+                setStatus("Type a full web address such as example.com, or use one of the site shortcuts.");
+                return;
             }
             w.loadUrl(url);
         };
@@ -659,6 +668,19 @@ public class HomeActivity extends Activity {
         hs.addView(chips);
         pg.addView(hs, Ui.lp(MATCH, WRAP, 0));
         fillBrowserChips(chips);
+
+        HorizontalScrollView ss = new HorizontalScrollView(this);
+        ss.setHorizontalScrollBarEnabled(false);
+        LinearLayout sites = Ui.row(this);
+        sites.addView(Ui.text(this, "Sites", 15f, Ui.DIM, true), Ui.lp(this, WRAP, WRAP, 0, 6));
+        for (final String[] site : SOUND_SITES) {
+            sites.addView(Ui.button(this, site[0], Ui.RAISE, Ui.TXT, () -> {
+                address.setText(site[1]);
+                w.loadUrl(site[1]);
+            }), Ui.lp(this, WRAP, WRAP, 0, 3));
+        }
+        ss.addView(sites);
+        pg.addView(ss, Ui.lp(MATCH, WRAP, 0));
 
         pg.addView(w, Ui.lp(MATCH, 0, 1f));
         host.addView(pg, new FrameLayout.LayoutParams(MATCH, MATCH));

@@ -1,44 +1,20 @@
-# 私隱政策 (Privacy Policy)
+# CarTalk privacy
 
-**Car Piano 完全離線運作。**
+CarTalk has no accounts, analytics or ads, and sends nothing about you, your sounds or your car to anyone.
 
-## 我哋收集咩資料？
+## When it uses the internet
 
-**冇。** 呢個 app：
+- **Update check.** The app asks this project's GitHub Releases page whether a newer build exists. If you choose to install one, it downloads that APK from GitHub. GitHub sees an ordinary web request from the car's internet connection.
+- **Built-in browser.** Sites you open in Browse web are loaded directly from those sites, which apply their own privacy terms and cookies. The shortcut buttons are plain links; nothing is contacted until you tap one.
 
-- ⚠️ 唯一嘅網絡請求：**查更新**。app 開嘅時候會下載一個版本資料檔（只有版本號／下載連結／雜湊），
-  **唔會傳送任何資料**（冇帳號、冇裝置 ID、冇統計）。你亦可以完全唔連網 —— 咁就唔會查到更新，其他功能照用。
-- ❌ 冇分析（analytics）／追蹤 SDK
-- ❌ 冇廣告
-- ❌ 唔會上傳任何錄音、資料或者診斷記錄
+## What stays on the head unit
 
-## 麥克風
+Imported sounds, groups, favourites, widget settings, automation rules and the last crash report are kept in the app's private storage. Uninstalling the app deletes them.
 
-- 只有你撳「⏺ 開始錄音」嗰陣先會收音
-- 錄音檔（`.wav`）只寫入 app 嘅私人目錄（其他 app 睇唔到）
-- 你可以喺介面逐段刪除（🗑），或者清除 app 資料一次過刪
-- 唔錄音可以完全唔授權麥克風權限
+## Microphone
 
-## 診斷記錄
+The microphone is used only while you hold the talk button, to pass your voice to the outside speaker. Nothing is recorded or stored.
 
-- app 會在本機寫低少量診斷文字（例如「UI 起唔到」「播音失敗原因」）同崩潰堆疊，方便你回報問題
-- 全部只存在 app 私人目錄（`.diag-*.txt` / `crash-*.txt`，最多保留少量檔案）
-- **唔會自動傳送**。只有你自己撳「🩺 自檢」先會喺畫面顯示，你想分享就自己複製
+## Vehicle data
 
-## 權限用途
-
-| 權限 | 用途 | 唔授權會點 |
-|---|---|---|
-| `RECORD_AUDIO` | 錄音功能 | 錄音用唔到，其他功能正常 |
-| `SYSTEM_ALERT_WINDOW` | 懸浮掣疊喺其他 app 上 | 懸浮掣用唔到 |
-| `FOREGROUND_SERVICE` | 「開車自動」常駐服務 | 開車自動用唔到 |
-| `RECEIVE_BOOT_COMPLETED` | 開機後恢復服務（有啲車機唔派） | 要自己開一次 app |
-
-## 車控資訊
-
-「開車自動」會讀取車機提供嘅**點火狀態**（只讀、唔會寫入任何車輛設定）。
-呢啲讀數只用嚟判斷「開車／泊車」，唔會離開裝置、唔會記錄成歷史。
-
-## 聯絡
-
-有私隱相關問題，請喺專案嘅 issue tracker 提出。
+The app reads a small number of vehicle signals (power state, Sentry mode, ambient lighting) to show them in Setup and to run automations you create. Those readings are not stored beyond the automation "last run" line and are never sent anywhere.
