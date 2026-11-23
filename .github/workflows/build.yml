@@ -35,14 +35,14 @@ jobs:
       - name: Name the APK
         id: apk
         run: |
-          out="CarPiano-2K-build-${{ github.run_number }}.apk"
+          out="CarTalk-build-${{ github.run_number }}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/$out"
           echo "path=$RUNNER_TEMP/$out" >> "$GITHUB_OUTPUT"
           ls -la "$RUNNER_TEMP/$out"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CarPiano-2K-build-${{ github.run_number }}
+          name: CarTalk-build-${{ github.run_number }}
           path: ${{ steps.apk.outputs.path }}
 
       - name: Publish as a pre-release

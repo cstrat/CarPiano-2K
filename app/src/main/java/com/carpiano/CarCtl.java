@@ -47,7 +47,7 @@ final class CarCtl {
             s.invoke(fn, id, v);
             return true;
         } catch (Throwable t) {
-            android.util.Log.i("CarPianoBT", "寫 0x" + Integer.toHexString(id)
+            android.util.Log.i("CarTalk", "寫 0x" + Integer.toHexString(id)
                     + " 失敗：" + t.getClass().getSimpleName());
             return false;
         }

@@ -1,6 +1,6 @@
 # CarTalk
 
-CarTalk (repo name CarPiano-2K) is an English rebuild of [jlunnn/CarPiano](https://github.com/jlunnn/CarPiano), a sound app for Zeekr head units (Android). The original plays a piano, recordings and alert tones through the car's **outside speaker** or the cabin, and can toggle a few vehicle functions. Its interface is Cantonese; the original README is kept as [README.zh-HK.md](README.zh-HK.md).
+CarTalk is an English rebuild of [jlunnn/CarPiano](https://github.com/jlunnn/CarPiano), a sound app for Zeekr head units (Android). The original plays a piano, recordings and alert tones through the car's **outside speaker** or the cabin, and can toggle a few vehicle functions. Its interface is Cantonese; the original README is kept as [README.zh-HK.md](README.zh-HK.md).
 
 > Unofficial. Not affiliated with Zeekr, Geely or ECARX. Playing sound outside a vehicle on public roads may be restricted where you live. Use it lawfully and considerately.
 
@@ -22,7 +22,7 @@ The app itself is the manager for the widget. The original Cantonese screens hav
 
 ## Download
 
-Every push to `main` builds an APK and publishes it under [Releases](../../releases). Download the newest `CarPiano-2K-build-N.apk` and install it on the head unit. Builds share one signing key, so each installs over the last.
+Every push to `main` builds an APK and publishes it under [Releases](../../releases). Download the newest `CarTalk-build-N.apk` and install it on the head unit. Builds share one signing key, so each installs over the last.
 
 ## Not built yet
 

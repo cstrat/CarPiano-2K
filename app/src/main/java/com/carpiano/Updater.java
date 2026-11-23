@@ -21,9 +21,12 @@ import java.net.URL;
  */
 final class Updater {
 
-    static final String REPO = "cstrat/CarPiano-2K";
-    static final String RELEASES_PAGE = "https://github.com/" + REPO + "/releases";
-    private static final String API = "https://api.github.com/repos/" + REPO + "/releases?per_page=10";
+    /**
+     * The repository under its new name first, then its original name. Whichever answers is
+     * used, so the updater works both before and after the repository is renamed.
+     */
+    private static final String[] REPOS = {"cstrat/CarTalk", "cstrat/CarPiano-2K"};
+    static volatile String RELEASES_PAGE = "https://github.com/" + REPOS[1] + "/releases";
 
     interface Found {
         void done(int build, String apkUrl, String error);
@@ -53,12 +56,23 @@ final class Updater {
         new Thread(() -> {
             HttpURLConnection con = null;
             try {
-                con = (HttpURLConnection) new URL(API).openConnection();
-                con.setConnectTimeout(10000);
-                con.setReadTimeout(15000);
-                con.setRequestProperty("Accept", "application/vnd.github+json");
-                con.setRequestProperty("User-Agent", "CarPiano-2K");
-                int code = con.getResponseCode();
+                int code = 0;
+                for (String repo : REPOS) {
+                    if (con != null) {
+                        con.disconnect();
+                    }
+                    con = (HttpURLConnection) new URL("https://api.github.com/repos/" + repo
+                            + "/releases?per_page=10").openConnection();
+                    con.setConnectTimeout(10000);
+                    con.setReadTimeout(15000);
+                    con.setRequestProperty("Accept", "application/vnd.github+json");
+                    con.setRequestProperty("User-Agent", "CarTalk");
+                    code = con.getResponseCode();
+                    if (code == 200) {
+                        RELEASES_PAGE = "https://github.com/" + repo + "/releases";
+                        break;
+                    }
+                }
                 if (code != 200) {
                     f.done(-1, null, "GitHub answered " + code);
                     return;
@@ -144,7 +158,7 @@ final class Updater {
                 con.setInstanceFollowRedirects(true);
                 con.setUseCaches(false);
                 con.setRequestProperty("Cache-Control", "no-cache");
-                con.setRequestProperty("User-Agent", "CarPiano-2K");
+                con.setRequestProperty("User-Agent", "CarTalk");
                 int code = con.getResponseCode();
                 if (code != 200) {
                     p.done(null, "Download answered " + code);
